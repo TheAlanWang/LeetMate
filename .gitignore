@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Maven
+/backend/target/
+
+# IntelliJ/IDEA
+.idea/
+*.iml
+
+# VSCode
+.vscode/
+
+# Node/Next.js
+/frontend/node_modules/
+/frontend/.next/
+/frontend/out/
+*.log
+
+# Env files
+.env*
