@@ -3,6 +3,7 @@
 
 # Maven
 /backend/target/
+.m2/
 
 # IntelliJ/IDEA
 .idea/

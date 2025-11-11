@@ -18,16 +18,18 @@ This repository now contains a Spring Boot 3 service that implements the core Le
 ### Running Locally
 ```bash
 cd backend
-mvn spring-boot:run
+./mvnw spring-boot:run
 ```
 
 The service will expose the REST API on `http://localhost:8080`.
+
+> Tip: the repo ships with the Maven Wrapper, so you don't need Maven installed globally. The wrapper downloads Maven 3.9.x on demand and reuses your local `.m2` cache.
 
 ### Tests
 Full integration tests cover the application and invite flows, including membership creation and uniqueness guarantees.
 ```bash
 cd backend
-mvn -q test
+./mvnw -q test
 ```
 
 ## Frontend (Next.js + Tailwind)
