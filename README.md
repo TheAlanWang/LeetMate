@@ -91,7 +91,7 @@ curl -s -X POST http://localhost:8080/challenges/$CHALLENGE_ID/submissions \
   -H 'Content-Type: application/json' \
   -d '{"language":"java","code":"class Solution { int climb(int n){ if(n<=2)return n; int a=1,b=2; for(int i=3;i<=n;i++){int c=a+b;a=b;b=c;} return b;} }"}'
 ```
-> ⚠️ 小贴士：同一个 mentee 再次调用 `/groups/{id}/join` 会得到 `400`（已经加入），只有调用 `/groups/{id}/leave` 或换账号才能重新加入。
+> ⚠️ Heads-up: calling `/groups/{id}/join` twice with the same mentee now returns `400 Already joined`. Call `/groups/{id}/leave` (or use a different account) before joining again.
 ```
 
 ### Frontend (manual)
