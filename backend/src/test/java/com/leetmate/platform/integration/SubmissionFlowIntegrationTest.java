@@ -33,10 +33,28 @@ class SubmissionFlowIntegrationTest {
 
     @Test
     void endToEndFlowCreatesReviewAndAwardsCredit() throws Exception {
+        String mentorToken = registerUser("""
+                {
+                  "name": "Mentor One",
+                  "email": "mentor@test.com",
+                  "password": "secret123",
+                  "role": "MENTOR"
+                }
+                """);
+        String menteeToken = registerUser("""
+                {
+                  "name": "Mentee One",
+                  "email": "mentee@test.com",
+                  "password": "secret123",
+                  "role": "MENTEE"
+                }
+                """);
+
         String groupPayload = objectMapper.writeValueAsString(
                 new Payload("Graph Ninjas", "desc", List.of("graph")));
         MvcResult groupResult = mockMvc.perform(post("/groups")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + mentorToken)
                         .content(groupPayload))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -54,6 +72,7 @@ class SubmissionFlowIntegrationTest {
                 """;
         MvcResult challengeResult = mockMvc.perform(post("/groups/" + groupId + "/challenges")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + mentorToken)
                         .content(challengePayload))
                 .andExpect(status().isCreated())
                 .andReturn();
@@ -68,6 +87,7 @@ class SubmissionFlowIntegrationTest {
                 """;
         MvcResult submissionResult = mockMvc.perform(post("/challenges/" + challengeId + "/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + menteeToken)
                         .content(submissionPayload))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.review.summary").exists())
@@ -83,6 +103,16 @@ class SubmissionFlowIntegrationTest {
         mockMvc.perform(get("/challenges/" + challengeId + "/submissions?page=0&size=10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(submissionId));
+    }
+
+    private String registerUser(String payload) throws Exception {
+        MvcResult result = mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andReturn();
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        return json.get("token").asText();
     }
 
     record Payload(String name, String description, List<String> tags) {

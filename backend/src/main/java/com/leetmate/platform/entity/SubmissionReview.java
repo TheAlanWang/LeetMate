@@ -1,5 +1,12 @@
 package com.leetmate.platform.entity;
 
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,13 +15,29 @@ import java.util.UUID;
 /**
  * AI review embedded within a submission.
  */
+@Entity
+@Table(name = "submission_reviews")
 public class SubmissionReview {
 
-    private final UUID id;
-    private final Instant createdAt;
-    private final String summary;
-    private final int complexity;
-    private final List<String> suggestions;
+    @Id
+    private UUID id;
+
+    @Column(nullable = false)
+    private Instant createdAt;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String summary;
+
+    @Column(nullable = false)
+    private int complexity;
+
+    @ElementCollection
+    @CollectionTable(name = "submission_review_suggestions", joinColumns = @JoinColumn(name = "review_id"))
+    @Column(name = "suggestion", columnDefinition = "TEXT")
+    private List<String> suggestions = new ArrayList<>();
+
+    protected SubmissionReview() {
+    }
 
     /**
      * Creates a new review snapshot.

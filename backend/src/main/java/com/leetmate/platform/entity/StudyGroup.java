@@ -1,5 +1,14 @@
 package com.leetmate.platform.entity;
 
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,14 +18,39 @@ import java.util.UUID;
 /**
  * Aggregate representing a mentor-led study group.
  */
+@Entity
+@Table(name = "study_groups")
 public class StudyGroup {
 
-    private final UUID id;
-    private final Instant createdAt;
+    @Id
+    private UUID id;
+
+    @Column(nullable = false, length = 80)
     private String name;
+
+    @Column(nullable = false, length = 400)
     private String description;
-    private List<String> tags;
-    private int memberCount;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "mentor_id")
+    private User mentor;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "study_group_tags", joinColumns = @JoinColumn(name = "group_id"))
+    @Column(name = "tag", length = 30)
+    private List<String> tags = new ArrayList<>();
+
+    @Column(nullable = false)
+    private int memberCount = 0;
+
+    @Column(nullable = false)
+    private Instant createdAt;
+
+    /**
+     * JPA constructor.
+     */
+    protected StudyGroup() {
+    }
 
     /**
      * Creates a new group instance.
@@ -27,8 +61,14 @@ public class StudyGroup {
      * @param tags        descriptive tags
      * @param createdAt   creation timestamp
      */
-    public StudyGroup(UUID id, String name, String description, List<String> tags, Instant createdAt) {
+    public StudyGroup(UUID id,
+                      User mentor,
+                      String name,
+                      String description,
+                      List<String> tags,
+                      Instant createdAt) {
         this.id = Objects.requireNonNull(id, "id must not be null");
+        this.mentor = Objects.requireNonNull(mentor, "mentor must not be null");
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
         this.name = name;
         this.description = description;
@@ -64,6 +104,13 @@ public class StudyGroup {
      */
     public String getDescription() {
         return description;
+    }
+
+    /**
+     * @return mentor
+     */
+    public User getMentor() {
+        return mentor;
     }
 
     /**

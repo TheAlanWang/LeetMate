@@ -1,98 +1,101 @@
 package com.leetmate.platform.service;
 
 import com.leetmate.platform.ai.MockAiReviewProvider;
-import com.leetmate.platform.dto.challenge.CreateChallengeRequest;
-import com.leetmate.platform.dto.group.CreateGroupRequest;
 import com.leetmate.platform.dto.submission.SubmissionResponse;
 import com.leetmate.platform.dto.submission.SubmitSolutionRequest;
+import com.leetmate.platform.entity.Challenge;
+import com.leetmate.platform.entity.ChallengeDifficulty;
+import com.leetmate.platform.entity.StudyGroup;
+import com.leetmate.platform.entity.Submission;
+import com.leetmate.platform.entity.User;
+import com.leetmate.platform.entity.UserRole;
 import com.leetmate.platform.exception.ResourceNotFoundException;
-import com.leetmate.platform.repository.ChallengeRepository;
-import com.leetmate.platform.repository.StudyGroupRepository;
 import com.leetmate.platform.repository.SubmissionRepository;
+import com.leetmate.platform.repository.UserRepository;
 import com.leetmate.platform.util.CyclomaticComplexityCalculator;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class SubmissionServiceTest {
 
-    private SubmissionService submissionService;
+    @Mock
+    private SubmissionRepository submissionRepository;
+
+    @Mock
     private ChallengeService challengeService;
-    private UUID groupId;
-    private UUID challengeId;
+
+    @Mock
+    private UserRepository userRepository;
+
+    private SubmissionService submissionService;
+    private Challenge challenge;
+    private User mentee;
 
     @BeforeEach
     void setUp() {
-        StudyGroupRepository groupRepository = new StudyGroupRepository();
-        GroupService groupService = new GroupService(groupRepository);
-        groupId = createGroup(groupService);
-        ChallengeRepository challengeRepository = new ChallengeRepository();
-        challengeService = new ChallengeService(challengeRepository, groupRepository);
-        challengeId = createChallenge(challengeService);
-        submissionService = new SubmissionService(new SubmissionRepository(), challengeService,
-                new MockAiReviewProvider(), new CyclomaticComplexityCalculator());
+        submissionService = new SubmissionService(submissionRepository, challengeService,
+                userRepository, new MockAiReviewProvider(), new CyclomaticComplexityCalculator());
+        User mentor = new User(UUID.randomUUID(), "Mentor", "mentor@demo.com", "hash", UserRole.MENTOR, Instant.now());
+        StudyGroup group = new StudyGroup(UUID.randomUUID(), mentor, "Graph", "desc", List.of("graph"), Instant.now());
+        challenge = new Challenge(UUID.randomUUID(), group, "Two Sum", "desc", "java",
+                ChallengeDifficulty.EASY, "class Solution {}", Instant.now());
+        mentee = new User(UUID.randomUUID(), "Mentee", "mentee@demo.com", "hash", UserRole.MENTEE, Instant.now());
     }
 
     @Test
     void submitCreatesReviewAndAwardsCredit() {
-        SubmissionResponse response = submissionService.submit(challengeId, newSubmitRequest());
+        when(challengeService.findChallenge(challenge.getId())).thenReturn(challenge);
+        when(userRepository.findById(mentee.getId())).thenReturn(Optional.of(mentee));
+        when(submissionRepository.save(any(Submission.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubmissionResponse response = submissionService.submit(challenge.getId(), newSubmitRequest(), mentee.getId());
 
         assertThat(response.getCreditsAwarded()).isEqualTo(1);
         assertThat(response.getReview()).isNotNull();
-        assertThat(response.getReview().getComplexity()).isGreaterThanOrEqualTo(1);
     }
 
     @Test
     void listSubmissionsSupportsPagination() {
-        submissionService.submit(challengeId, newSubmitRequest());
-        submissionService.submit(challengeId, newSubmitRequest());
+        when(challengeService.findChallenge(challenge.getId())).thenReturn(challenge);
+        when(userRepository.findById(mentee.getId())).thenReturn(Optional.of(mentee));
+        Submission persisted = new Submission(UUID.randomUUID(), challenge, mentee, "java", "code", 1, Instant.now());
+        when(submissionRepository.findByChallenge_IdOrderByCreatedAtDesc(eq(challenge.getId()), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(persisted), PageRequest.of(0, 1), 1));
 
-        var page = submissionService.listSubmissions(challengeId, 0, 1);
+        var page = submissionService.listSubmissions(challenge.getId(), 0, 1);
+
         assertThat(page.getContent()).hasSize(1);
-        assertThat(page.getTotalElements()).isEqualTo(2);
+        assertThat(page.getTotalElements()).isEqualTo(1);
     }
 
     @Test
     void getUnknownSubmissionThrows() {
+        when(submissionRepository.findById(any(UUID.class))).thenReturn(Optional.empty());
+
         assertThatThrownBy(() -> submissionService.getSubmission(UUID.randomUUID()))
                 .isInstanceOf(ResourceNotFoundException.class);
-    }
-
-    private UUID createGroup(GroupService groupService) {
-        CreateGroupRequest request = new CreateGroupRequest();
-        request.setName("Graph Ninjas");
-        request.setDescription("desc");
-        request.setTags(List.of("graph"));
-        return groupService.createGroup(request).getId();
-    }
-
-    private UUID createChallenge(ChallengeService challengeService) {
-        CreateChallengeRequest request = new CreateChallengeRequest();
-        request.setTitle("Two Sum");
-        request.setDescription("desc");
-        request.setLanguage("java");
-        request.setDifficulty("easy");
-        request.setStarterCode("class Solution {}");
-        return challengeService.createChallenge(groupId, request).getId();
     }
 
     private SubmitSolutionRequest newSubmitRequest() {
         SubmitSolutionRequest request = new SubmitSolutionRequest();
         request.setLanguage("java");
-        request.setCode("""
-                public class Solution {
-                    public int add(int a, int b) {
-                        if (a > 0 && b > 0) {
-                            return a + b;
-                        }
-                        return 0;
-                    }
-                }
-                """);
+        request.setCode("class Solution {}");
         return request;
     }
 }

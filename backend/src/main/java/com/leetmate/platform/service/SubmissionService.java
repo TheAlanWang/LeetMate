@@ -6,14 +6,17 @@ import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.dto.submission.ReviewResponse;
 import com.leetmate.platform.dto.submission.SubmissionResponse;
 import com.leetmate.platform.dto.submission.SubmitSolutionRequest;
+import com.leetmate.platform.entity.Challenge;
 import com.leetmate.platform.entity.Submission;
 import com.leetmate.platform.entity.SubmissionReview;
 import com.leetmate.platform.exception.ResourceNotFoundException;
 import com.leetmate.platform.repository.SubmissionRepository;
+import com.leetmate.platform.repository.UserRepository;
 import com.leetmate.platform.util.CyclomaticComplexityCalculator;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 
@@ -27,6 +30,7 @@ public class SubmissionService {
 
     private final SubmissionRepository submissionRepository;
     private final ChallengeService challengeService;
+    private final UserRepository userRepository;
     private final AiReviewProvider aiReviewProvider;
     private final CyclomaticComplexityCalculator complexityCalculator;
 
@@ -40,10 +44,12 @@ public class SubmissionService {
      */
     public SubmissionService(SubmissionRepository submissionRepository,
                              ChallengeService challengeService,
+                             UserRepository userRepository,
                              AiReviewProvider aiReviewProvider,
                              CyclomaticComplexityCalculator complexityCalculator) {
         this.submissionRepository = submissionRepository;
         this.challengeService = challengeService;
+        this.userRepository = userRepository;
         this.aiReviewProvider = aiReviewProvider;
         this.complexityCalculator = complexityCalculator;
     }
@@ -55,9 +61,11 @@ public class SubmissionService {
      * @param request     payload
      * @return submission response
      */
-    public SubmissionResponse submit(UUID challengeId, SubmitSolutionRequest request) {
-        challengeService.findChallenge(challengeId);
-        Submission submission = new Submission(UUID.randomUUID(), challengeId,
+    public SubmissionResponse submit(UUID challengeId, SubmitSolutionRequest request, UUID menteeId) {
+        Challenge challenge = challengeService.findChallenge(challengeId);
+        var mentee = userRepository.findById(menteeId)
+                .orElseThrow(() -> new ResourceNotFoundException("User %s not found".formatted(menteeId)));
+        Submission submission = new Submission(UUID.randomUUID(), challenge, mentee,
                 request.getLanguage(), request.getCode(), 1, Instant.now());
         AiReviewResult reviewResult = aiReviewProvider.review(request.getLanguage(), request.getCode());
         int complexity = complexityCalculator.calculate(request.getCode());
@@ -90,14 +98,16 @@ public class SubmissionService {
     public PageResponse<SubmissionResponse> listSubmissions(UUID challengeId, int page, int size) {
         challengeService.findChallenge(challengeId);
         validatePagination(page, size);
-        List<Submission> submissions = submissionRepository.findByChallengeId(challengeId);
-        int fromIndex = Math.min(page * size, submissions.size());
-        int toIndex = Math.min(fromIndex + size, submissions.size());
-        List<SubmissionResponse> content = submissions.subList(fromIndex, toIndex).stream()
-                .map(this::toResponse)
-                .toList();
-        int totalPages = (int) Math.ceil((double) submissions.size() / size);
-        return new PageResponse<>(content, page, size, submissions.size(), totalPages);
+        PageRequest pageable = PageRequest.of(page, size);
+        Page<SubmissionResponse> submissions = submissionRepository
+                .findByChallenge_IdOrderByCreatedAtDesc(challengeId, pageable)
+                .map(this::toResponse);
+        return new PageResponse<>(
+                submissions.getContent(),
+                submissions.getNumber(),
+                submissions.getSize(),
+                submissions.getTotalElements(),
+                submissions.getTotalPages());
     }
 
     private Submission findSubmission(UUID submissionId) {
@@ -111,6 +121,8 @@ public class SubmissionService {
                         review.getComplexity(), review.getSuggestions(), review.getCreatedAt()))
                 .orElse(null);
         return new SubmissionResponse(submission.getId(), submission.getChallengeId(),
+                submission.getMentee() != null ? submission.getMentee().getId() : null,
+                submission.getMentee() != null ? submission.getMentee().getName() : null,
                 submission.getLanguage(), submission.getCode(), submission.getCreditsAwarded(),
                 submission.getCreatedAt(), reviewResponse);
     }

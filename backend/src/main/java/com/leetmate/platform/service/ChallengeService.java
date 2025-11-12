@@ -4,6 +4,7 @@ import com.leetmate.platform.dto.challenge.ChallengeResponse;
 import com.leetmate.platform.dto.challenge.CreateChallengeRequest;
 import com.leetmate.platform.entity.Challenge;
 import com.leetmate.platform.entity.ChallengeDifficulty;
+import com.leetmate.platform.entity.StudyGroup;
 import com.leetmate.platform.exception.ResourceNotFoundException;
 import com.leetmate.platform.repository.ChallengeRepository;
 import com.leetmate.platform.repository.StudyGroupRepository;
@@ -11,6 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -41,8 +43,11 @@ public class ChallengeService {
      * @param request payload
      * @return created challenge
      */
-    public ChallengeResponse createChallenge(UUID groupId, CreateChallengeRequest request) {
-        ensureGroupExists(groupId);
+    public ChallengeResponse createChallenge(UUID groupId, CreateChallengeRequest request, UUID mentorId) {
+        StudyGroup group = ensureGroupExists(groupId);
+        if (!group.getMentor().getId().equals(mentorId)) {
+            throw new AccessDeniedException("You are not the mentor of this group");
+        }
         ChallengeDifficulty difficulty;
         try {
             difficulty = ChallengeDifficulty
@@ -50,7 +55,7 @@ public class ChallengeService {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("difficulty must be EASY, MEDIUM or HARD");
         }
-        Challenge challenge = new Challenge(UUID.randomUUID(), groupId, request.getTitle(),
+        Challenge challenge = new Challenge(UUID.randomUUID(), group, request.getTitle(),
                 request.getDescription(), request.getLanguage().toLowerCase(Locale.ROOT),
                 difficulty, request.getStarterCode(), Instant.now());
         challengeRepository.save(challenge);
@@ -65,7 +70,7 @@ public class ChallengeService {
      */
     public List<ChallengeResponse> listGroupChallenges(UUID groupId) {
         ensureGroupExists(groupId);
-        return challengeRepository.findByGroupId(groupId).stream()
+        return challengeRepository.findByGroup_IdOrderByCreatedAtDesc(groupId).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -97,8 +102,8 @@ public class ChallengeService {
                 challenge.getStarterCode(), challenge.getCreatedAt());
     }
 
-    private void ensureGroupExists(UUID groupId) {
-        studyGroupRepository.findById(groupId)
+    private StudyGroup ensureGroupExists(UUID groupId) {
+        return studyGroupRepository.findById(groupId)
                 .orElseThrow(() -> new ResourceNotFoundException("Group %s not found".formatted(groupId)));
     }
 }

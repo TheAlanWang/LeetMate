@@ -15,6 +15,8 @@ public class GroupResponse {
     private final List<String> tags;
     private final int memberCount;
     private final Instant createdAt;
+    private final UUID mentorId;
+    private final String mentorName;
 
     /**
      * Creates a new response.
@@ -25,19 +27,25 @@ public class GroupResponse {
      * @param tags        tags
      * @param memberCount members
      * @param createdAt   timestamp
+     * @param mentorId    mentor identifier
+     * @param mentorName  mentor name
      */
     public GroupResponse(UUID id,
                          String name,
                          String description,
                          List<String> tags,
                          int memberCount,
-                         Instant createdAt) {
+                         Instant createdAt,
+                         UUID mentorId,
+                         String mentorName) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.tags = List.copyOf(tags);
         this.memberCount = memberCount;
         this.createdAt = createdAt;
+        this.mentorId = mentorId;
+        this.mentorName = mentorName;
     }
 
     /**
@@ -80,5 +88,19 @@ public class GroupResponse {
      */
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    /**
+     * @return mentor identifier
+     */
+    public UUID getMentorId() {
+        return mentorId;
+    }
+
+    /**
+     * @return mentor display name
+     */
+    public String getMentorName() {
+        return mentorName;
     }
 }

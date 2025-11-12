@@ -3,10 +3,13 @@ package com.leetmate.platform.controller;
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.dto.group.CreateGroupRequest;
 import com.leetmate.platform.dto.group.GroupResponse;
+import com.leetmate.platform.security.UserPrincipal;
 import com.leetmate.platform.service.GroupService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,8 +47,10 @@ public class GroupController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public GroupResponse createGroup(@Valid @RequestBody CreateGroupRequest request) {
-        return groupService.createGroup(request);
+    @PreAuthorize("hasRole('MENTOR')")
+    public GroupResponse createGroup(@AuthenticationPrincipal UserPrincipal user,
+                                     @Valid @RequestBody CreateGroupRequest request) {
+        return groupService.createGroup(request, user.getId());
     }
 
     /**
@@ -79,8 +84,10 @@ public class GroupController {
      * @return updated response
      */
     @PostMapping("/{groupId}/join")
-    public GroupResponse joinGroup(@PathVariable UUID groupId) {
-        return groupService.joinGroup(groupId);
+    @PreAuthorize("hasRole('MENTEE')")
+    public GroupResponse joinGroup(@AuthenticationPrincipal UserPrincipal user,
+                                   @PathVariable UUID groupId) {
+        return groupService.joinGroup(groupId, user.getId());
     }
 
     /**
@@ -90,7 +97,9 @@ public class GroupController {
      * @return updated response
      */
     @PostMapping("/{groupId}/leave")
-    public GroupResponse leaveGroup(@PathVariable UUID groupId) {
-        return groupService.leaveGroup(groupId);
+    @PreAuthorize("hasRole('MENTEE')")
+    public GroupResponse leaveGroup(@AuthenticationPrincipal UserPrincipal user,
+                                    @PathVariable UUID groupId) {
+        return groupService.leaveGroup(groupId, user.getId());
     }
 }

@@ -2,11 +2,14 @@ package com.leetmate.platform.controller;
 
 import com.leetmate.platform.dto.challenge.ChallengeResponse;
 import com.leetmate.platform.dto.challenge.CreateChallengeRequest;
+import com.leetmate.platform.security.UserPrincipal;
 import com.leetmate.platform.service.ChallengeService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,9 +45,11 @@ public class ChallengeController {
      */
     @PostMapping("/groups/{groupId}/challenges")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('MENTOR')")
     public ChallengeResponse createChallenge(@PathVariable UUID groupId,
+                                             @AuthenticationPrincipal UserPrincipal mentor,
                                              @Valid @RequestBody CreateChallengeRequest request) {
-        return challengeService.createChallenge(groupId, request);
+        return challengeService.createChallenge(groupId, request, mentor.getId());
     }
 
     /**

@@ -20,3 +20,4 @@
 
 # Env files
 .env*
+!.env.example

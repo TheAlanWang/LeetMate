@@ -10,6 +10,8 @@ public class SubmissionResponse {
 
     private final UUID id;
     private final UUID challengeId;
+    private final UUID menteeId;
+    private final String menteeName;
     private final String language;
     private final String code;
     private final int creditsAwarded;
@@ -29,6 +31,8 @@ public class SubmissionResponse {
      */
     public SubmissionResponse(UUID id,
                               UUID challengeId,
+                              UUID menteeId,
+                              String menteeName,
                               String language,
                               String code,
                               int creditsAwarded,
@@ -36,6 +40,8 @@ public class SubmissionResponse {
                               ReviewResponse review) {
         this.id = id;
         this.challengeId = challengeId;
+        this.menteeId = menteeId;
+        this.menteeName = menteeName;
         this.language = language;
         this.code = code;
         this.creditsAwarded = creditsAwarded;
@@ -49,6 +55,14 @@ public class SubmissionResponse {
 
     public UUID getChallengeId() {
         return challengeId;
+    }
+
+    public UUID getMenteeId() {
+        return menteeId;
+    }
+
+    public String getMenteeName() {
+        return menteeName;
     }
 
     public String getLanguage() {

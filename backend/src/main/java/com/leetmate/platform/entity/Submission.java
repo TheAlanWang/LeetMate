@@ -1,5 +1,13 @@
 package com.leetmate.platform.entity;
 
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -7,34 +15,60 @@ import java.util.UUID;
 /**
  * Represents a mentee submission for a challenge.
  */
+@Entity
+@Table(name = "submissions")
 public class Submission {
 
-    private final UUID id;
-    private final UUID challengeId;
-    private final Instant createdAt;
-    private final String language;
-    private final String code;
-    private final int creditsAwarded;
+    @Id
+    private UUID id;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "challenge_id")
+    private Challenge challenge;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "mentee_id")
+    private User mentee;
+
+    @Column(nullable = false, length = 20)
+    private String language;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String code;
+
+    @Column(nullable = false)
+    private int creditsAwarded;
+
+    @Column(nullable = false)
+    private Instant createdAt;
+
+    @OneToOne(optional = true, orphanRemoval = true, cascade = CascadeType.ALL)
+    @JoinColumn(name = "review_id")
     private SubmissionReview review;
+
+    protected Submission() {
+    }
 
     /**
      * Creates a new submission.
      *
      * @param id             identifier
-     * @param challengeId    owning challenge identifier
+     * @param challenge      owning challenge
      * @param language       language used by the mentee
      * @param code           code content
      * @param creditsAwarded credits rewarded for the submission
      * @param createdAt      creation timestamp
      */
     public Submission(UUID id,
-                      UUID challengeId,
+                      Challenge challenge,
+                      User mentee,
                       String language,
                       String code,
                       int creditsAwarded,
                       Instant createdAt) {
         this.id = id;
-        this.challengeId = challengeId;
+        this.challenge = challenge;
+        this.mentee = mentee;
         this.language = language;
         this.code = code;
         this.creditsAwarded = creditsAwarded;
@@ -52,7 +86,15 @@ public class Submission {
      * @return challenge identifier
      */
     public UUID getChallengeId() {
-        return challengeId;
+        return challenge.getId();
+    }
+
+    public Challenge getChallenge() {
+        return challenge;
+    }
+
+    public User getMentee() {
+        return mentee;
     }
 
     /**

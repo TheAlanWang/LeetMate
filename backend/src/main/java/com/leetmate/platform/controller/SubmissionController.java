@@ -3,10 +3,13 @@ package com.leetmate.platform.controller;
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.dto.submission.SubmissionResponse;
 import com.leetmate.platform.dto.submission.SubmitSolutionRequest;
+import com.leetmate.platform.security.UserPrincipal;
 import com.leetmate.platform.service.SubmissionService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -43,9 +46,11 @@ public class SubmissionController {
      */
     @PostMapping("/challenges/{challengeId}/submissions")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('MENTEE')")
     public SubmissionResponse submit(@PathVariable UUID challengeId,
+                                     @AuthenticationPrincipal UserPrincipal principal,
                                      @Valid @RequestBody SubmitSolutionRequest request) {
-        return submissionService.submit(challengeId, request);
+        return submissionService.submit(challengeId, request, principal.getId());
     }
 
     /**

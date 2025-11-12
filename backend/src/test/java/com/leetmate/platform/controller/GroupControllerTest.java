@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.dto.group.CreateGroupRequest;
 import com.leetmate.platform.dto.group.GroupResponse;
+import com.leetmate.platform.entity.UserRole;
+import com.leetmate.platform.security.UserPrincipal;
 import com.leetmate.platform.service.GroupService;
 import java.time.Instant;
 import java.util.List;
@@ -11,9 +13,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.when;
@@ -23,6 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(GroupController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class GroupControllerTest {
 
     @Autowired
@@ -34,11 +39,14 @@ class GroupControllerTest {
     @MockBean
     private GroupService groupService;
 
+    private final UserPrincipal mentorPrincipal =
+            new UserPrincipal(UUID.randomUUID(), "mentor@demo.com", "password", UserRole.MENTOR);
+
     @Test
     void createGroupReturns201() throws Exception {
         GroupResponse response = new GroupResponse(UUID.randomUUID(), "Graph Ninjas", "desc",
-                List.of("graph"), 0, Instant.now());
-        when(groupService.createGroup(ArgumentMatchers.any(CreateGroupRequest.class)))
+                List.of("graph"), 0, Instant.now(), mentorPrincipal.getId(), "Mentor");
+        when(groupService.createGroup(ArgumentMatchers.any(CreateGroupRequest.class), ArgumentMatchers.any(UUID.class)))
                 .thenReturn(response);
 
         CreateGroupRequest request = new CreateGroupRequest();
@@ -47,6 +55,7 @@ class GroupControllerTest {
         request.setTags(List.of("graph"));
 
         mockMvc.perform(post("/groups")
+                        .with(SecurityMockMvcRequestPostProcessors.user(mentorPrincipal))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -61,6 +70,7 @@ class GroupControllerTest {
         request.setTags(List.of());
 
         mockMvc.perform(post("/groups")
+                        .with(SecurityMockMvcRequestPostProcessors.user(mentorPrincipal))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -69,7 +79,7 @@ class GroupControllerTest {
     @Test
     void listGroupsDelegatesToService() throws Exception {
         GroupResponse response = new GroupResponse(UUID.randomUUID(), "Graph Ninjas", "desc",
-                List.of("graph"), 0, Instant.now());
+                List.of("graph"), 0, Instant.now(), mentorPrincipal.getId(), "Mentor");
         PageResponse<GroupResponse> page = new PageResponse<>(List.of(response), 0, 20, 1, 1);
         when(groupService.listGroups(0, 20)).thenReturn(page);
 
