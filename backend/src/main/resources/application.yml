@@ -30,3 +30,9 @@ logging:
   level:
     root: INFO
     com.leetmate: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

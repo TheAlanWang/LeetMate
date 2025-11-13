@@ -38,6 +38,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers(HttpMethod.GET, "/groups", "/groups/**", "/challenges/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/notifications/test").permitAll()
                         .anyRequest().authenticated())

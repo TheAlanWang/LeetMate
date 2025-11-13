@@ -2,6 +2,7 @@ package com.leetmate.platform.service;
 
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.dto.group.CreateGroupRequest;
+import com.leetmate.platform.dto.group.GroupMemberResponse;
 import com.leetmate.platform.dto.group.GroupResponse;
 import com.leetmate.platform.entity.GroupMember;
 import com.leetmate.platform.entity.StudyGroup;
@@ -12,6 +13,7 @@ import com.leetmate.platform.repository.GroupMemberRepository;
 import com.leetmate.platform.repository.StudyGroupRepository;
 import com.leetmate.platform.repository.UserRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -124,6 +126,37 @@ public class GroupService {
         group.decrementMembers();
         repository.save(group);
         return toResponse(group);
+    }
+
+    /**
+     * Lists all groups a mentee has joined.
+     *
+     * @param menteeId mentee identifier
+     * @return joined groups in reverse join order
+     */
+    public List<GroupResponse> listGroupsForMentee(UUID menteeId) {
+        findMentee(menteeId);
+        return groupMemberRepository.findGroupsByMemberId(menteeId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Lists mentees who follow a specific group.
+     *
+     * @param groupId group identifier
+     * @return mentee list ordered by join time
+     */
+    public List<GroupMemberResponse> listMenteesForGroup(UUID groupId) {
+        StudyGroup group = find(groupId);
+        return groupMemberRepository.findAllByGroupIdOrderByJoinedAtAsc(group.getId())
+                .stream()
+                .map(membership -> {
+                    User mentee = membership.getMember();
+                    return new GroupMemberResponse(mentee.getId(), mentee.getName(), mentee.getEmail(), membership.getJoinedAt());
+                })
+                .toList();
     }
 
     private StudyGroup find(UUID groupId) {

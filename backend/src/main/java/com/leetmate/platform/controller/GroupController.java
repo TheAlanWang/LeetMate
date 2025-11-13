@@ -2,12 +2,16 @@ package com.leetmate.platform.controller;
 
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.dto.group.CreateGroupRequest;
+import com.leetmate.platform.dto.group.GroupMemberResponse;
 import com.leetmate.platform.dto.group.GroupResponse;
+import com.leetmate.platform.entity.UserRole;
 import com.leetmate.platform.security.UserPrincipal;
 import com.leetmate.platform.service.GroupService;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -45,7 +49,7 @@ public class GroupController {
      * @param request payload
      * @return created group
      */
-    @PostMapping
+    @PostMapping("/create")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('MENTOR')")
     public GroupResponse createGroup(@AuthenticationPrincipal UserPrincipal user,
@@ -101,5 +105,32 @@ public class GroupController {
     public GroupResponse leaveGroup(@AuthenticationPrincipal UserPrincipal user,
                                     @PathVariable UUID groupId) {
         return groupService.leaveGroup(groupId, user.getId());
+    }
+
+    /**
+     * Lists the groups a mentee has joined.
+     *
+     * @param menteeId mentee identifier
+     * @return joined groups
+     */
+    @GetMapping("/mentees/{menteeId}")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
+    public List<GroupResponse> listGroupsForMentee(@AuthenticationPrincipal UserPrincipal user,
+                                                   @PathVariable UUID menteeId) {
+        if (!user.getId().equals(menteeId) && user.getRole() != UserRole.MENTOR) {
+            throw new AccessDeniedException("You can only view your own joined groups");
+        }
+        return groupService.listGroupsForMentee(menteeId);
+    }
+
+    /**
+     * Lists mentees (followers) of a specific group.
+     *
+     * @param groupId group identifier
+     * @return followers
+     */
+    @GetMapping("/{groupId}/mentees")
+    public List<GroupMemberResponse> listMenteesForGroup(@PathVariable UUID groupId) {
+        return groupService.listMenteesForGroup(groupId);
     }
 }

@@ -3,9 +3,12 @@ package com.leetmate.platform.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.dto.group.CreateGroupRequest;
+import com.leetmate.platform.dto.group.GroupMemberResponse;
 import com.leetmate.platform.dto.group.GroupResponse;
 import com.leetmate.platform.entity.UserRole;
 import com.leetmate.platform.security.UserPrincipal;
+import com.leetmate.platform.repository.UserRepository;
+import com.leetmate.platform.security.JwtService;
 import com.leetmate.platform.service.GroupService;
 import java.time.Instant;
 import java.util.List;
@@ -38,6 +41,12 @@ class GroupControllerTest {
 
     @MockBean
     private GroupService groupService;
+
+    @MockBean
+    private JwtService jwtService;
+
+    @MockBean
+    private UserRepository userRepository;
 
     private final UserPrincipal mentorPrincipal =
             new UserPrincipal(UUID.randomUUID(), "mentor@demo.com", "password", UserRole.MENTOR);
@@ -86,5 +95,20 @@ class GroupControllerTest {
         mockMvc.perform(get("/groups?page=0&size=20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].name").value("Graph Ninjas"));
+    }
+
+    @Test
+    void listMenteesForGroupReturns200() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID menteeId = UUID.randomUUID();
+        GroupMemberResponse memberResponse = new GroupMemberResponse(
+                menteeId, "Test Mentee", "mentee@test.com", Instant.now());
+        when(groupService.listMenteesForGroup(groupId)).thenReturn(List.of(memberResponse));
+
+        mockMvc.perform(get("/groups/" + groupId + "/mentees"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(menteeId.toString()))
+                .andExpect(jsonPath("$[0].name").value("Test Mentee"))
+                .andExpect(jsonPath("$[0].email").value("mentee@test.com"));
     }
 }
