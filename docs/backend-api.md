@@ -1,23 +1,23 @@
-# LeetMate Backend API 接口文档
+# LeetMate Backend API Reference
 
-> 适用范围：当前 `backend/` Spring Boot 服务（端口默认为 `http://localhost:8080`）。所有请求均使用 `application/json`，时间字段为 ISO-8601 UTC（例如 `2024-05-30T12:45:02Z`），ID 为 UUID 字符串。
+> Scope: the current Spring Boot service under `backend/` (default base URL `http://localhost:8080`). All endpoints expect `application/json`, timestamps follow ISO-8601 UTC (for example `2024-05-30T12:45:02Z`), and IDs are UUID strings.
 
-## 1. 鉴权与通用约定
+## 1. Authentication & Global Conventions
 
-- **认证方式**：所有受保护接口需在请求头添加 `Authorization: Bearer <JWT>`。JWT 由 `/auth/login` 或 `/auth/register` 返回。
-- **角色**：`MENTOR`（导师）与 `MENTEE`（学员）。方法级 `@PreAuthorize` 会限制不同角色是否可调用。
-- **跨域**：默认允许 `http://localhost:*`、`127.0.0.1` 以及 `*.local`。
-- **分页统一格式**：接口返回 `PageResponse<T>` 时字段如下：
+- **Authorization header**: Protected endpoints require `Authorization: Bearer <JWT>`. Tokens are issued by `/auth/login` or `/auth/register`.
+- **Roles**: `MENTOR` and `MENTEE`. Method-level `@PreAuthorize` guards enforce who can call each endpoint.
+- **CORS**: Allowed origins include `http://localhost:*`, `http://127.0.0.1:*`, `http://0.0.0.0:*`, and `http://*.local:*`.
+- **Pagination schema** (`PageResponse<T>`):
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 | --- | --- | --- |
-| `content` | `T[]` | 当前页数据 |
-| `page` | `number` | 从 0 开始的页码 |
-| `size` | `number` | 请求的 page size |
-| `totalElements` | `number` | 总记录数 |
-| `totalPages` | `number` | 总页数 |
+| `content` | `T[]` | Items in the current page |
+| `page` | `number` | Zero-based page index |
+| `size` | `number` | Page size requested |
+| `totalElements` | `number` | Total items in the dataset |
+| `totalPages` | `number` | Total number of pages |
 
-- **错误响应**：所有异常统一包装为 `ApiErrorResponse`：
+- **Error contract** (`ApiErrorResponse`):
 
 ```json
 {
@@ -29,238 +29,238 @@
 }
 ```
 
-常见状态码：`400` 校验失败/业务非法；`401` 未登录或 JWT 无效；`403` 权限不足；`404` 资源不存在；`422` 不会单独返回，由 `400` 覆盖。
+Typical codes: `400` validation/business errors, `401` unauthenticated, `403` forbidden, `404` missing resource. Other cases (such as bad input) are normalized to `400`.
 
-## 2. 认证模块 (`/auth`)
+## 2. Auth Module (`/auth`)
 
 ### 2.1 POST `/auth/register`
 
-- **权限**：公开
-- **描述**：注册导师或学员账号，成功后直接返回 JWT。
-- **请求体**
+- **Access**: Public
+- **Purpose**: Create either a mentor or mentee account and immediately return a JWT.
+- **Request body**
 
-| 字段 | 类型 | 必填 | 校验 | 说明 |
+| Field | Type | Required | Validation | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | string | ✅ | `1-80` 字符 | 显示昵称 |
-| `email` | string | ✅ | 邮箱格式，唯一 | 登录邮箱，大小写不敏感 |
-| `password` | string | ✅ | `6-100` 字符 | 登录密码 |
-| `role` | string | ✅ | 枚举 `MENTOR` / `MENTEE`（大小写忽略） | 账号角色 |
+| `name` | string | ✅ | `1-80` chars | Display name |
+| `email` | string | ✅ | Must be unique, valid email | Login email (case-insensitive) |
+| `password` | string | ✅ | `6-100` chars | Login password |
+| `role` | string | ✅ | `MENTOR` or `MENTEE` (case-insensitive) | Account role |
 
-- **响应体** `AuthResponse`
+- **Response** `AuthResponse`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `token` | string | JWT，用于后续请求 |
-| `user` | object | `UserSummary`：`id`、`name`、`email`、`role` |
+| `token` | string | JWT for subsequent calls |
+| `user` | object | `UserSummary` (`id`, `name`, `email`, `role`) |
 
-- **状态码**：`201 Created` 成功；`400` 邮箱已存在/角色非法。
+- **Status codes**: `201 Created` on success, `400` if email already exists or role is invalid.
 
 ### 2.2 POST `/auth/login`
 
-- **权限**：公开
-- **描述**：已有账号登录。
-- **请求体**
+- **Access**: Public
+- **Purpose**: Authenticate an existing account.
+- **Request body**
 
-| 字段 | 类型 | 必填 | 说明 |
+| Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `email` | string | ✅ | 注册邮箱 |
-| `password` | string | ✅ | 密码 |
+| `email` | string | ✅ | Registered email |
+| `password` | string | ✅ | Password |
 
-- **响应体**：同注册
-- **状态码**：`200 OK`；`401 Unauthorized` 凭证错误。
+- **Response**: Same as register
+- **Status codes**: `200 OK`, `401 Unauthorized` for bad credentials.
 
-## 3. 学习小组 (`/groups`)
+## 3. Study Groups (`/groups`)
 
-> `GroupResponse` 字段：`id`、`name`、`description`、`tags (string[])`、`memberCount`、`createdAt`、`mentorId`、`mentorName`。
+> `GroupResponse` fields: `id`, `name`, `description`, `tags (string[])`, `memberCount`, `createdAt`, `mentorId`, `mentorName`.
 
 ### 3.1 POST `/groups/create`
 
-- **权限**：`MENTOR`（需登录）
-- **描述**：导师创建学习小组。
-- **请求体** `CreateGroupRequest`
+- **Access**: `MENTOR`
+- **Purpose**: Mentor creates a study group.
+- **Request** `CreateGroupRequest`
 
-| 字段 | 类型 | 必填 | 校验 | 说明 |
+| Field | Type | Required | Validation | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | string | ✅ | ≤ 80 字符 | 小组名称 |
-| `description` | string | ✅ | ≤ 400 字符 | 介绍 |
-| `tags` | string[] | ✅ | 不为空，最多 5 个，每个 ≤ 30 字符 | 标签 |
+| `name` | string | ✅ | ≤ 80 chars | Group name |
+| `description` | string | ✅ | ≤ 400 chars | Group description |
+| `tags` | string[] | ✅ | Non-empty, ≤ 5 entries, each ≤ 30 chars | Topic tags |
 
-- **响应**：`201 Created`，返回 `GroupResponse`
+- **Response**: `201 Created`, returns `GroupResponse`
 
 ### 3.2 GET `/groups`
 
-- **权限**：公开
-- **描述**：分页浏览所有小组，按创建时间倒序。
-- **查询参数**
+- **Access**: Public
+- **Purpose**: Paginated list of groups ordered by creation time (desc).
+- **Query params**
 
-| 参数 | 默认 | 说明 |
+| Param | Default | Notes |
 | --- | --- | --- |
-| `page` | `0` | 从 0 开始 |
-| `size` | `20` | 每页数量，`1-100` |
+| `page` | `0` | Zero-based |
+| `size` | `20` | Range `1-100` |
 
-- **响应**：`PageResponse<GroupResponse>`
+- **Response**: `PageResponse<GroupResponse>`
 
 ### 3.3 GET `/groups/{groupId}`
 
-- **权限**：公开
-- **描述**：查看单个小组详情。
-- **路径参数**：`groupId` (UUID)
-- **响应**：`GroupResponse`
+- **Access**: Public
+- **Purpose**: Fetch details for a single group.
+- **Path**: `groupId` (UUID)
+- **Response**: `GroupResponse`
 
 ### 3.4 POST `/groups/{groupId}/join`
 
-- **权限**：`MENTEE`
-- **描述**：学员加入小组；若重复加入返回 `400`。
-- **路径参数**：`groupId`
-- **响应**：`GroupResponse`（最新成员数）
+- **Access**: `MENTEE`
+- **Purpose**: Join a group. Duplicate joins raise `400`.
+- **Path**: `groupId`
+- **Response**: Updated `GroupResponse`
 
 ### 3.5 POST `/groups/{groupId}/leave`
 
-- **权限**：`MENTEE`
-- **描述**：退出已加入的小组；未加入时返回 `404`。
-- **响应**：`GroupResponse`
+- **Access**: `MENTEE`
+- **Purpose**: Leave a group you previously joined. Missing membership yields `404`.
+- **Response**: Updated `GroupResponse`
 
 ### 3.6 GET `/groups/mentees/{menteeId}`
 
-- **权限**：`MENTOR` 或 查询者本人
-- **描述**：列出该学员加入的全部小组。后台会校验：非本人且非导师将返回 `403`。
-- **响应**：`GroupResponse[]`
+- **Access**: Mentor or the mentee themselves
+- **Purpose**: List every group the mentee has joined. Non-mentors can only access their own memberships.
+- **Response**: `GroupResponse[]`
 
 ### 3.7 GET `/groups/{groupId}/mentees`
 
-- **权限**：公开
-- **描述**：列出指定小组的所有关注学员。
-- **响应项** `GroupMemberResponse`
+- **Access**: Public
+- **Purpose**: Enumerate mentees following the group.
+- **Response items** `GroupMemberResponse`
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Notes |
 | --- | --- | --- |
-| `id` | UUID | 学员 ID |
-| `name` | string | 学员姓名 |
-| `email` | string | 学员邮箱 |
-| `joinedAt` | datetime | 加入时间 |
+| `id` | UUID | Mentee ID |
+| `name` | string | Mentee display name |
+| `email` | string | Mentee email |
+| `joinedAt` | datetime | Join timestamp |
 
-## 4. 挑战 (`/groups/{groupId}/challenges`, `/challenges`)
+## 4. Challenges (`/groups/{groupId}/challenges`, `/challenges`)
 
-> `ChallengeResponse` 字段：`id`、`groupId`、`title`、`description`、`language`（小写）、`difficulty`（`EASY/MEDIUM/HARD`）、`starterCode`、`createdAt`。
+> `ChallengeResponse` fields: `id`, `groupId`, `title`, `description`, `language` (lowercase), `difficulty` (`EASY/MEDIUM/HARD`), `starterCode`, `createdAt`.
 
 ### 4.1 POST `/groups/{groupId}/challenges`
 
-- **权限**：`MENTOR` 且必须是该组导师
-- **描述**：给指定小组新增一道题目。
-- **请求体** `CreateChallengeRequest`
+- **Access**: `MENTOR` and must own the group
+- **Purpose**: Publish a challenge under a group.
+- **Request** `CreateChallengeRequest`
 
-| 字段 | 类型 | 必填 | 校验 | 说明 |
+| Field | Type | Required | Validation | Notes |
 | --- | --- | --- | --- | --- |
-| `title` | string | ✅ | ≤120 字符 | 挑战名称 |
-| `description` | string | ✅ | 任意长度 | 题面 |
-| `language` | string | ✅ | 正则 `java|python|cpp|js`（忽略大小写） | 推荐语言 |
-| `difficulty` | string | ✅ | `EASY/MEDIUM/HARD` | 难度 |
-| `starterCode` | string | ✅ | 任意 | 起始代码片段 |
+| `title` | string | ✅ | ≤ 120 chars | Challenge title |
+| `description` | string | ✅ | Any length | Problem statement |
+| `language` | string | ✅ | Regex `java|python|cpp|js` (case-insensitive) | Recommended language |
+| `difficulty` | string | ✅ | `EASY/MEDIUM/HARD` | Difficulty |
+| `starterCode` | string | ✅ | Any | Starter snippet |
 
-- **响应**：`201 Created`，返回 `ChallengeResponse`
+- **Response**: `201 Created`, returns `ChallengeResponse`
 
 ### 4.2 GET `/groups/{groupId}/challenges`
 
-- **权限**：公开
-- **描述**：列出小组下的所有挑战（按创建时间倒序）。
-- **响应**：`ChallengeResponse[]`
+- **Access**: Public
+- **Purpose**: List group challenges (newest first).
+- **Response**: `ChallengeResponse[]`
 
 ### 4.3 GET `/challenges/{challengeId}`
 
-- **权限**：公开
-- **描述**：获取题目详情。
-- **响应**：`ChallengeResponse`
+- **Access**: Public
+- **Purpose**: Fetch a single challenge.
+- **Response**: `ChallengeResponse`
 
-## 5. 代码提交 (`/challenges/{challengeId}/submissions`, `/submissions/{id}`)
+## 5. Submissions (`/challenges/{challengeId}/submissions`, `/submissions/{id}`)
 
-> `SubmissionResponse` 字段：`id`、`challengeId`、`menteeId`、`menteeName`、`language`、`code`、`creditsAwarded`、`createdAt`、`review`。  
-> `review` 为 `ReviewResponse`：`id`、`summary`、`complexity`（圈复杂度）、`suggestions (string[])`、`createdAt`。
+> `SubmissionResponse` fields: `id`, `challengeId`, `menteeId`, `menteeName`, `language`, `code`, `creditsAwarded`, `createdAt`, `review`.  
+> `review` (`ReviewResponse`) includes `id`, `summary`, `complexity`, `suggestions (string[])`, `createdAt`.
 
 ### 5.1 POST `/challenges/{challengeId}/submissions`
 
-- **权限**：`MENTEE`
-- **描述**：提交代码，后台会：
-  1. 校验挑战存在；
-  2. 保存提交记录并固定奖励 `creditsAwarded = 1`;
-  3. 调用 AI（或本地 mock）生成评审与圈复杂度。
-- **请求体** `SubmitSolutionRequest`
+- **Access**: `MENTEE`
+- **Purpose**: Submit solution code. Backend workflow:
+  1. Validate the challenge exists.
+  2. Persist submission and award `creditsAwarded = 1`.
+  3. Request an AI (or mock) review and cyclomatic complexity score.
+- **Request** `SubmitSolutionRequest`
 
-| 字段 | 类型 | 必填 | 校验 | 说明 |
+| Field | Type | Required | Validation | Notes |
 | --- | --- | --- | --- | --- |
-| `language` | string | ✅ | 非空 | 提交语言 |
-| `code` | string | ✅ | ≤ 10,000 字符 | 代码正文 |
+| `language` | string | ✅ | Non-empty | Submission language |
+| `code` | string | ✅ | ≤ 10,000 chars | Code body |
 
-- **响应**：`201 Created`，返回 `SubmissionResponse`
+- **Response**: `201 Created`, returns `SubmissionResponse`
 
 ### 5.2 GET `/submissions/{submissionId}`
 
-- **权限**：登录即可（任何角色）
-- **描述**：查看单条提交（含 AI 评审）。
-- **响应**：`SubmissionResponse`
+- **Access**: Any authenticated user
+- **Purpose**: Retrieve a single submission including review data.
+- **Response**: `SubmissionResponse`
 
 ### 5.3 GET `/challenges/{challengeId}/submissions`
 
-- **权限**：公开
-- **描述**：列出指定挑战下的所有提交，按创建时间倒序。
-- **查询参数**：`page`（默认 0）、`size`（默认 20，最大 100）
-- **响应**：`PageResponse<SubmissionResponse>`
+- **Access**: Public
+- **Purpose**: Paginated submissions for a challenge (newest first).
+- **Query params**: `page` default `0`, `size` default `20`, max `100`
+- **Response**: `PageResponse<SubmissionResponse>`
 
-> ⚠️ 由于接口会返回完整代码，请在前端自行决定是否对非作者隐藏 `code` 字段。
+> ⚠ Because the payload returns raw `code`, front-end clients should decide if non-authors can see it.
 
-## 6. 小组讨论 (Group Chat)
+## 6. Group Chat
 
-> `ThreadResponse` 字段：`id`、`groupId`、`title`、`description`、`createdAt`、`createdById`、`createdByName`。  
-> `MessageResponse` 字段：`id`、`threadId`、`authorId`、`authorName`、`authorRole`、`content`、`codeLanguage`、`createdAt`。
+> `ThreadResponse` fields: `id`, `groupId`, `title`, `description`, `createdAt`, `createdById`, `createdByName`.  
+> `MessageResponse` fields: `id`, `threadId`, `authorId`, `authorName`, `authorRole`, `content`, `codeLanguage`, `createdAt`.
 
-所有讨论接口都需要登录，且后台会验证：调用者是该组导师或已加入的学员，否则返回 `403 You are not part of this group`。
+All endpoints require authentication. The service also checks whether the caller is the group mentor or a joined mentee; otherwise it responds with `403 You are not part of this group`.
 
 ### 6.1 POST `/groups/{groupId}/threads`
 
-- **权限**：`MENTOR` / `MENTEE`
-- **描述**：在小组内创建讨论串；可带首条消息。
-- **请求体** `CreateThreadRequest`
+- **Access**: `MENTOR` or `MENTEE`
+- **Purpose**: Create a discussion thread inside a group, optionally seeding the first message.
+- **Request** `CreateThreadRequest`
 
-| 字段 | 类型 | 必填 | 校验 | 说明 |
+| Field | Type | Required | Validation | Notes |
 | --- | --- | --- | --- | --- |
-| `title` | string | ✅ | ≤160 字符 | 线程标题 |
-| `description` | string | ❌ | ≤2000 字符 | 线程描述 |
-| `initialMessage` | string | ❌ | ≤8000 字符 | 如果提供，将作为首条消息写入 |
-| `codeLanguage` | string | ❌ | ≤30 字符 | 首条消息代码语言标注 |
+| `title` | string | ✅ | ≤ 160 chars | Thread title |
+| `description` | string | ❌ | ≤ 2,000 chars | Thread description |
+| `initialMessage` | string | ❌ | ≤ 8,000 chars | Optional first message |
+| `codeLanguage` | string | ❌ | ≤ 30 chars | Language tag for the first message |
 
-- **响应**：`201 Created`，返回 `ThreadResponse`
+- **Response**: `201 Created`, returns `ThreadResponse`
 
 ### 6.2 GET `/groups/{groupId}/threads`
 
-- **权限**：`MENTOR` / `MENTEE`
-- **描述**：分页查看小组中的所有讨论串。
-- **查询参数**：`page`（默认 0）、`size`（默认 20，最大 100）
-- **响应**：`PageResponse<ThreadResponse>`
+- **Access**: `MENTOR` or `MENTEE`
+- **Purpose**: Paginated list of threads within a group.
+- **Query params**: `page` default `0`, `size` default `20`, max `100`
+- **Response**: `PageResponse<ThreadResponse>`
 
 ### 6.3 POST `/threads/{threadId}/messages`
 
-- **权限**：`MENTOR` / `MENTEE`
-- **描述**：在讨论串内发送消息。
-- **请求体** `CreateMessageRequest`
+- **Access**: `MENTOR` or `MENTEE`
+- **Purpose**: Post a message to a thread.
+- **Request** `CreateMessageRequest`
 
-| 字段 | 类型 | 必填 | 校验 | 说明 |
+| Field | Type | Required | Validation | Notes |
 | --- | --- | --- | --- | --- |
-| `content` | string | ✅ | ≤8000 字符 | 文本内容 |
-| `codeLanguage` | string | ❌ | ≤30 字符 | 代码语言标注（可选） |
+| `content` | string | ✅ | ≤ 8,000 chars | Message body |
+| `codeLanguage` | string | ❌ | ≤ 30 chars | Optional language tag |
 
-- **响应**：`201 Created`，返回 `MessageResponse`
+- **Response**: `201 Created`, returns `MessageResponse`
 
 ### 6.4 GET `/threads/{threadId}/messages`
 
-- **权限**：`MENTOR` / `MENTEE`
-- **描述**：分页读取指定讨论串的消息，按时间正序。
-- **查询参数**：`page`（默认 0）、`size`（默认 50，最大 100）
-- **响应**：`PageResponse<MessageResponse>`
+- **Access**: `MENTOR` or `MENTEE`
+- **Purpose**: Paginated messages in chronological order.
+- **Query params**: `page` default `0`, `size` default `50`, max `100`
+- **Response**: `PageResponse<MessageResponse>`
 
-## 7. 调试建议
+## 7. Debugging Tips
 
-1. **注册两个账号**：导师与学员，保存返回的 `token`。
-2. **导师**：调用 `/groups/create`、`/groups/{id}/challenges` 发布内容。
-3. **学员**：先 `/groups/{id}/join`，再 `/challenges/{id}/submissions`、`/threads/...`。
-4. **排查权限**：出现 `403` 时确认 `Authorization` 头是否携带正确的角色 JWT，或是否已经加入相关小组。
+1. **Create two accounts** (mentor + mentee) and store the tokens.
+2. **Mentor flow**: `/groups/create`, `/groups/{id}/challenges`.
+3. **Mentee flow**: `/groups/{id}/join`, `/challenges/{id}/submissions`, `/threads/...`.
+4. **403 diagnostics**: Confirm you send the correct JWT role and that the caller has joined the relevant group.
 
-通过以上接口即可覆盖 PRD 中的核心 Mentor/Mentee 流程，如需扩展（例如邀请、审核等）可在后续迭代中继续补充。
+These endpoints cover the core mentor/mentee workflow from the PRD. Extend the document alongside future surfaces (invites, approvals, notifications, etc.) to keep it authoritative.
