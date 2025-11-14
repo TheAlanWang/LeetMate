@@ -291,28 +291,28 @@ const RoleSelection = () => {
   }, [displayedText, isDeleting, currentTextIndex]);
 
   return (
-    <div className="bg-gray-50 py-16 mt-0">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-10 gap-8 items-center">
-          <div className="md:col-span-6">
-            <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
+    <div className="bg-gray-50 py-20 mt-0">
+      <div className="max-w-screen-2xl mx-auto px-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+          <div className="md:col-span-2 text-center">
+            <h1 className="text-6xl md:text-7xl font-bold text-gray-900 mb-6">
               Join Mentor's Group
             </h1>
-            <h2 className="text-4xl md:text-5xl font-bold text-teal-500 mb-6 min-h-[1.2em]">
+            <h2 className="text-5xl md:text-6xl font-bold text-teal-500 mb-8 min-h-[1.2em]">
               Start {displayedText}
               <span className="animate-pulse">|</span>
             </h2>
-            <p className="text-xl md:text-2xl text-gray-600 leading-relaxed">
+            <p className="text-2xl md:text-2xl text-gray-600 leading-relaxed">
               Ship real code, practice interviews, and design systems with mentors.
             </p>
           </div>
-          <div className="md:col-span-4">
+          <div className="md:col-span-1">
             <button
               onClick={() => navigate('/groups')}
-              className="w-full bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-2xl p-8 cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all duration-300"
+              className="w-80 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-xl p-5 cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all duration-300"
             >
-              <h3 className="text-3xl font-bold mb-3">Find your Group</h3>
-              <p className="text-lg opacity-90">Browse and join study groups</p>
+              <h3 className="text-2xl font-bold mb-1">Find your Group</h3>
+              <p className="text-xs opacity-90">Browse and join study groups</p>
             </button>
           </div>
         </div>
@@ -633,7 +633,7 @@ const LandingPage = () => {
         <MentorActions onSuccess={fetchGroups} onMessage={handleMessage} />
       </div>
       <div className="bg-teal-50 py-12">
-        <div className="max-w-7xl mx-auto px-4 pb-12">
+        <div className="max-w-screen-2xl mx-auto px-4 pb-12">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-bold text-gray-900">
               Popular Groups
