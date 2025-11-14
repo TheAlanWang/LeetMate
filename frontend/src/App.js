@@ -292,7 +292,7 @@ const RoleSelection = () => {
 
   return (
     <div className="bg-gray-50 py-20 mt-0">
-      <div className="max-w-screen-2xl mx-auto px-4">
+      <div className="max-w-[1400px] mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
           <div className="md:col-span-2 text-center">
             <h1 className="text-6xl md:text-7xl font-bold text-gray-900 mb-6">
@@ -311,8 +311,8 @@ const RoleSelection = () => {
               onClick={() => navigate('/groups')}
               className="w-80 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-xl p-5 cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all duration-300"
             >
-              <h3 className="text-2xl font-bold mb-1">Find your Group</h3>
-              <p className="text-xs opacity-90">Browse and join study groups</p>
+              <h3 className="text-3xl font-bold mb-1">Find your Group</h3>
+              <p className="text-base opacity-90">Browse and join study groups</p>
             </button>
           </div>
         </div>
@@ -633,7 +633,7 @@ const LandingPage = () => {
         <MentorActions onSuccess={fetchGroups} onMessage={handleMessage} />
       </div>
       <div className="bg-teal-50 py-12">
-        <div className="max-w-screen-xl mx-auto px-4 pb-12">
+        <div className="max-w-[1400px] mx-auto px-4 pb-12">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-3xl font-bold text-gray-900">
               Popular Groups
