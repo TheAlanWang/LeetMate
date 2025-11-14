@@ -9,6 +9,7 @@ Spring Boot now powers the mentor–mentee workflows defined in `docs/LeetMate_P
 - **Mentee flows** – join groups, submit code, receive deterministic AI feedback (mocked in `test` profile).
 - **Membership tracking** – `group_members` table keeps mentor groups and mentees in sync, preventing duplicate joins and keeping `memberCount` accurate.
 - **Global validation & error handling** for clean API responses.
+- **Group chat threads** – mentors/mentees create discussion threads, drop messages (supports optional code language metadata), and fetch rolling history for any group they belong to.
 
 ### Tech Stack
 - Java 17, Spring Boot 3 (Web, Data JPA, Security, WebFlux for the AI client)
@@ -61,6 +62,14 @@ cd backend
 ```
 The API listens on `http://localhost:8080`. Run tests with `./mvnw -q test`.
 
+#### Seeding demo data
+Want to skip manual setup and get sample mentors/mentees plus a populated chat thread?
+```bash
+cd backend
+APP_SEED_DATA_ENABLED=true ./mvnw spring-boot:run
+```
+That flag creates `mentor9@test.com` / `mentee9@test.com` (password both `password`), a “Daily Challenge Lab” group, and a ready-to-inspect discussion thread with two starter messages. Use those credentials in Postman to exercise the chat endpoints immediately.
+
 ### Demo Flow (cURL)
 ```bash
 # 1. Register mentor & mentee
@@ -90,6 +99,25 @@ curl -s -X POST http://localhost:8080/challenges/$CHALLENGE_ID/submissions \
   -H "Authorization: Bearer $MENTEE_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"language":"java","code":"class Solution { int climb(int n){ if(n<=2)return n; int a=1,b=2; for(int i=3;i<=n;i++){int c=a+b;a=b;b=c;} return b;} }"}'
+
+# 4. Start a discussion thread inside the group
+THREAD_ID=$(curl -s -X POST http://localhost:8080/groups/$GROUP_ID/threads \
+  -H "Authorization: Bearer $MENTOR_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Daily Challenge","description":"Share your solutions","initialMessage":"Kick-off prompt for today!"}' \
+  | jq -r .id)
+
+# 5. Exchange messages between mentor and mentee
+curl -s -X POST http://localhost:8080/threads/$THREAD_ID/messages \
+  -H "Authorization: Bearer $MENTOR_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"Try solving Two Sum and post your reasoning."}'
+curl -s -X POST http://localhost:8080/threads/$THREAD_ID/messages \
+  -H "Authorization: Bearer $MENTEE_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"Here is my Python solution","codeLanguage":"python"}'
+curl -s http://localhost:8080/threads/$THREAD_ID/messages \
+  -H "Authorization: Bearer $MENTEE_TOKEN" | jq .
 ```
 > ⚠️ Heads-up: calling `/groups/{id}/join` twice with the same mentee now returns `400 Already joined`. Call `/groups/{id}/leave` (or use a different account) before joining again.
 ```
