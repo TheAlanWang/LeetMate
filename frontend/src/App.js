@@ -349,7 +349,6 @@ const GroupCard = ({ group, onRefresh, onMessage }) => {
       }
       onMessage?.(`Successfully joined "${data.name}" group!`);
       onRefresh?.();
-      // 加入成功后跳转到 group 页面
       navigate(`/groups/${group.id}`);
     } catch (error) {
       onMessage?.(error.message);
@@ -580,101 +579,6 @@ const MentorActions = ({ onSuccess, onMessage }) => {
   );
 };
 
-const MenteeActions = ({ onMessage }) => {
-  const { isMentee, token } = useAuth();
-  const [form, setForm] = useState({ challengeId: '', language: 'java', code: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [review, setReview] = useState(null);
-
-  if (!isMentee) {
-    return null;
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!token) {
-      onMessage?.('Please log in first.');
-      return;
-    }
-    setSubmitting(true);
-    setReview(null);
-    try {
-      const response = await fetch(`${API_BASE}/challenges/${form.challengeId}/submissions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ language: form.language, code: form.code })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.message || 'Submission failed');
-      }
-      setReview(data.review);
-      onMessage?.('Submission successful! AI review completed.');
-    } catch (error) {
-      onMessage?.(error.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mt-6">
-      <h3 className="text-xl font-semibold mb-4 text-gray-900">Submit Code for AI Review</h3>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="text"
-          value={form.challengeId}
-          onChange={(e) => setForm((prev) => ({ ...prev, challengeId: e.target.value }))}
-          placeholder="Challenge ID"
-          className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400"
-          required
-        />
-        <select
-          value={form.language}
-          onChange={(e) => setForm((prev) => ({ ...prev, language: e.target.value }))}
-          className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400"
-        >
-          {['java', 'python', 'cpp', 'js'].map((lang) => (
-            <option key={lang} value={lang}>{lang.toUpperCase()}</option>
-          ))}
-        </select>
-        <textarea
-          value={form.code}
-          onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))}
-          placeholder="Paste or enter your code here"
-          rows={6}
-          className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 font-mono text-sm"
-          required
-        />
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full bg-teal-500 text-white rounded-lg py-3 font-medium hover:bg-teal-600 transition"
-        >
-          {submitting ? 'Submitting...' : 'Submit for AI Review'}
-        </button>
-      </form>
-      {review && (
-        <div className="mt-6 bg-teal-50 border border-teal-200 rounded-xl p-4">
-          <h4 className="text-lg font-semibold text-teal-800 mb-2">AI Review</h4>
-          <p className="text-sm text-gray-700 mb-2"><strong>Summary:</strong> {review.summary}</p>
-          <p className="text-sm text-gray-700 mb-2"><strong>Complexity:</strong> {review.complexity}</p>
-          {review.suggestions?.length > 0 && (
-            <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-              {review.suggestions.map((suggestion, index) => (
-                <li key={index}>{suggestion}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
 const LandingPage = () => {
   const [groups, setGroups] = useState([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
@@ -727,7 +631,6 @@ const LandingPage = () => {
       <RoleSelection />
       <div className="max-w-5xl mx-auto px-4">
         <MentorActions onSuccess={fetchGroups} onMessage={handleMessage} />
-        <MenteeActions onMessage={handleMessage} />
       </div>
       <div className="bg-teal-50 py-12 mt-10">
         <div className="max-w-7xl mx-auto px-4 pb-12">
