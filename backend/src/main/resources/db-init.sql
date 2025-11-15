@@ -5,6 +5,7 @@
 TRUNCATE TABLE submission_review_suggestions CASCADE;
 TRUNCATE TABLE submission_reviews CASCADE;
 TRUNCATE TABLE submissions CASCADE;
+TRUNCATE TABLE password_reset_tokens CASCADE;
 TRUNCATE TABLE challenges CASCADE;
 TRUNCATE TABLE group_members CASCADE;
 TRUNCATE TABLE study_group_tags CASCADE;
@@ -54,4 +55,3 @@ INSERT INTO challenges (id, group_id, title, description, language, difficulty, 
 
 -- Update member counts to match actual members
 UPDATE study_groups SET member_count = (SELECT COUNT(*) FROM group_members WHERE group_id = study_groups.id);
-

@@ -70,4 +70,8 @@ public class User {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+    public void updatePassword(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
 }

@@ -56,6 +56,7 @@ const AuthPanel = ({ onMessage, onSuccess, standalone = true }) => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [showReset, setShowReset] = useState(false);
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -114,88 +115,212 @@ const AuthPanel = ({ onMessage, onSuccess, standalone = true }) => {
 
   return (
     <div className={`bg-white rounded-2xl shadow-md border border-gray-200 p-6 ${containerClass}`}>
-      <div className="flex space-x-4 mb-4">
-        {['login', 'register'].map((value) => (
+      {showReset ? (
+        <PasswordResetPanel
+          onClose={() => setShowReset(false)}
+          onMessage={onMessage}
+        />
+      ) : (
+        <>
+          <div className="flex space-x-4 mb-4">
+            {['login', 'register'].map((value) => (
+              <button
+                key={value}
+                className={`px-4 py-2 rounded-full font-medium ${mode === value ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+                onClick={() => setMode(value)}
+              >
+                {value === 'login' ? 'Log In' : 'Sign Up'}
+              </button>
+            ))}
+          </div>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {mode === 'register' && (
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => handleChange('name', e.target.value)}
+                placeholder="Full Name"
+                className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400"
+                required
+              />
+            )}
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => handleChange('email', e.target.value)}
+              placeholder="Email"
+              className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 col-span-1 md:col-span-2"
+              required
+            />
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => handleChange('password', e.target.value)}
+              placeholder="Password"
+              className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 col-span-1 md:col-span-2"
+              required
+            />
+            {mode === 'register' && (
+              <div className="col-span-1 md:col-span-2">
+                <label className="text-sm font-medium text-gray-600 mb-2 block">Role</label>
+                <div className="flex space-x-4">
+                  {['MENTOR', 'MENTEE'].map((role) => (
+                    <label key={role} className={`px-4 py-2 rounded-full cursor-pointer border ${form.role === role ? 'bg-teal-500 text-white border-teal-500' : 'border-gray-300 text-gray-700'}`}>
+                      <input
+                        type="radio"
+                        value={role}
+                        checked={form.role === role}
+                        onChange={(e) => handleChange('role', e.target.value)}
+                        className="hidden"
+                      />
+                      {role === 'MENTOR' ? 'Mentor' : 'Mentee'}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {error && (
+              <div className="col-span-1 md:col-span-2 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="col-span-1 md:col-span-2 bg-gray-900 text-white rounded-lg py-3 hover:bg-gray-800 transition font-medium"
+            >
+              {submitting ? 'Loading...' : mode === 'login' ? 'Log In' : 'Sign Up & Log In'}
+            </button>
+            
+            {mode === 'login' && (
+              <div className="col-span-1 md:col-span-2 text-center text-sm text-gray-600 mt-4 space-y-2">
+                <div>
+                  If you don't have an account,{' '}
+                  <button
+                    type="button"
+                    onClick={() => setMode('register')}
+                    className="text-teal-600 hover:text-teal-700 font-medium underline"
+                  >
+                    Sign up
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowReset(true)}
+                  className="text-teal-600 hover:text-teal-700 font-medium underline"
+                >
+                  Forgot password? Reset it
+                </button>
+              </div>
+            )}
+          </form>
+        </>
+      )}
+    </div>
+  );
+};
+
+const PasswordResetPanel = ({ onClose, onMessage }) => {
+  const { requestPasswordReset, confirmPasswordReset } = useAuth();
+  const [mode, setMode] = useState('request');
+  const [form, setForm] = useState({ email: '', token: '', password: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      let result;
+      if (mode === 'request') {
+        result = await requestPasswordReset(form.email.trim());
+        if (result.success) {
+          const message = 'Check your inbox (or backend logs) for the reset link.';
+          setFeedback(message);
+        }
+      } else {
+        result = await confirmPasswordReset({ token: form.token.trim(), password: form.password });
+        if (result.success) {
+          const message = 'Password updated. You can log in with the new password.';
+          onMessage?.(message);
+          onClose?.();
+          return;
+        }
+      }
+      if (!result.success) {
+        setError(result.message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex space-x-4">
+        {['request', 'reset'].map((value) => (
           <button
             key={value}
             className={`px-4 py-2 rounded-full font-medium ${mode === value ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-700'}`}
-            onClick={() => setMode(value)}
+            onClick={() => {
+              setMode(value);
+              setError(null);
+              setFeedback(null);
+            }}
           >
-            {value === 'login' ? 'Log In' : 'Sign Up'}
+            {value === 'request' ? 'Request Link' : 'Use Token'}
           </button>
         ))}
       </div>
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mode === 'register' && (
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4">
+        {mode === 'request' ? (
           <input
-            type="text"
-            value={form.name}
-            onChange={(e) => handleChange('name', e.target.value)}
-            placeholder="Full Name"
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+            placeholder="Account Email"
             className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400"
             required
           />
+        ) : (
+          <>
+            <input
+              type="text"
+              value={form.token}
+              onChange={(e) => setForm((prev) => ({ ...prev, token: e.target.value }))}
+              placeholder="Reset Token"
+              className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400"
+              required
+            />
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+              placeholder="New Password"
+              className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400"
+              required
+            />
+          </>
         )}
-        <input
-          type="email"
-          value={form.email}
-          onChange={(e) => handleChange('email', e.target.value)}
-          placeholder="Email"
-          className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 col-span-1 md:col-span-2"
-          required
-        />
-        <input
-          type="password"
-          value={form.password}
-          onChange={(e) => handleChange('password', e.target.value)}
-          placeholder="Password"
-          className="border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 col-span-1 md:col-span-2"
-          required
-        />
-        {mode === 'register' && (
-          <div className="col-span-1 md:col-span-2">
-            <label className="text-sm font-medium text-gray-600 mb-2 block">Role</label>
-            <div className="flex space-x-4">
-              {['MENTOR', 'MENTEE'].map((role) => (
-                <label key={role} className={`px-4 py-2 rounded-full cursor-pointer border ${form.role === role ? 'bg-teal-500 text-white border-teal-500' : 'border-gray-300 text-gray-700'}`}>
-                  <input
-                    type="radio"
-                    value={role}
-                    checked={form.role === role}
-                    onChange={(e) => handleChange('role', e.target.value)}
-                    className="hidden"
-                  />
-                  {role === 'MENTOR' ? 'Mentor' : 'Mentee'}
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-        {error && (
-          <div className="col-span-1 md:col-span-2 text-sm text-red-600">
-            {error}
-          </div>
-        )}
+        {error && <div className="text-sm text-red-600">{error}</div>}
+        {feedback && <div className="text-sm text-emerald-600">{feedback}</div>}
         <button
           type="submit"
           disabled={submitting}
-          className="col-span-1 md:col-span-2 bg-gray-900 text-white rounded-lg py-3 hover:bg-gray-800 transition font-medium"
+          className="bg-gray-900 text-white rounded-lg py-3 hover:bg-gray-800 transition font-medium"
         >
-          {submitting ? 'Loading...' : mode === 'login' ? 'Log In' : 'Sign Up & Log In'}
+          {submitting ? 'Working...' : mode === 'request' ? 'Email Reset Link' : 'Reset Password'}
         </button>
-        
-        {mode === 'login' && (
-          <div className="col-span-1 md:col-span-2 text-center text-sm text-gray-600 mt-4">
-            If you don't have an account,{' '}
-            <button
-              type="button"
-              onClick={() => setMode('register')}
-              className="text-teal-600 hover:text-teal-700 font-medium underline"
-            >
-              Sign up
-            </button>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-center text-sm text-gray-600 underline"
+        >
+          ← Back to login
+        </button>
       </form>
     </div>
   );

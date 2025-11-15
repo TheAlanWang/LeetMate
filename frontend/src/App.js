@@ -94,6 +94,24 @@ const AuthProvider = ({ children }) => {
     }
   };
 
+  const requestPasswordReset = async (email) => {
+    try {
+      await performAuthRequest('/auth/password/forgot', { email });
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
+  const confirmPasswordReset = async ({ token, password }) => {
+    try {
+      await performAuthRequest('/auth/password/reset', { token, newPassword: password });
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -104,6 +122,8 @@ const AuthProvider = ({ children }) => {
     token,
     login,
     register,
+    requestPasswordReset,
+    confirmPasswordReset,
     logout,
     isMentor: user?.role === 'MENTOR',
     isMentee: user?.role === 'MENTEE'

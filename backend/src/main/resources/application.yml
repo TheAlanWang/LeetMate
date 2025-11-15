@@ -40,3 +40,5 @@ management:
 app:
   seed-data:
     enabled: ${APP_SEED_DATA_ENABLED:false}
+  password-reset:
+    link-template: ${PASSWORD_RESET_LINK_TEMPLATE:http://localhost:3000/login?resetToken=%s}

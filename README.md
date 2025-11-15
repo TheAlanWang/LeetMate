@@ -5,6 +5,7 @@ Spring Boot now powers the mentor–mentee workflows defined in `docs/LeetMate_P
 ### Backend Features
 - **PostgreSQL persistence** with Spring Data JPA (H2 is still used automatically during tests).
 - **JWT-based authentication** with mentor/mentee roles, password hashing, and request filtering.
+- **Self-service password reset** issuing 1-hour tokens and logging the reset link for local dev.
 - **Mentor flows** – create groups, publish challenges inside owned groups.
 - **Mentee flows** – join groups, submit code, receive deterministic AI feedback (mocked in `test` profile).
 - **Membership tracking** – `group_members` table keeps mentor groups and mentees in sync, preventing duplicate joins and keeping `memberCount` accurate.
@@ -34,6 +35,7 @@ Spring Boot now powers the mentor–mentee workflows defined in `docs/LeetMate_P
    export REACT_APP_API_BASE=http://localhost:8080
    ```
    The OpenAI integration stays optional; without `OPENAI_API_KEY` the app falls back to the mock reviewer. The frontend auto-detects the backend host (e.g., if you open `http://localhost:3000` it will call `http://localhost:8080`), so exporting `REACT_APP_API_BASE` is only required when you need to point at a completely different domain.
+   Password reset emails are logged with a link template controlled via `PASSWORD_RESET_LINK_TEMPLATE` (defaults to `http://localhost:3000/login?resetToken=%s`), so you can point the link at any frontend route.
    Hibernate runs with `spring.jpa.hibernate.ddl-auto=update`, so your dev data survives backend restarts.
 
 ### One Command Demo (Docker)

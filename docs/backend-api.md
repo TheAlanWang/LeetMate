@@ -69,6 +69,33 @@ Typical codes: `400` validation/business errors, `401` unauthenticated, `403` fo
 - **Response**: Same as register
 - **Status codes**: `200 OK`, `401 Unauthorized` for bad credentials.
 
+### 2.3 POST `/auth/password/forgot`
+
+- **Access**: Public
+- **Purpose**: Issue a password reset token and email (logged in dev) a link valid for 1 hour.
+- **Request body**
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `email` | string | ✅ | Email of the account to reset |
+
+- **Response** `MessageResponse`
+- **Status codes**: `202 Accepted` even if the email is unknown (prevents user enumeration).
+
+### 2.4 POST `/auth/password/reset`
+
+- **Access**: Public
+- **Purpose**: Update the password using a token from the reset email.
+- **Request body**
+
+| Field | Type | Required | Validation | Notes |
+| --- | --- | --- | --- | --- |
+| `token` | string | ✅ | UUID | Token from the email |
+| `newPassword` | string | ✅ | `6-100` chars | Replacement password |
+
+- **Response** `MessageResponse`
+- **Status codes**: `200 OK`, `400` when the token is invalid, used, or expired.
+
 ## 3. Study Groups (`/groups`)
 
 > `GroupResponse` fields: `id`, `name`, `description`, `tags (string[])`, `memberCount`, `createdAt`, `mentorId`, `mentorName`.
