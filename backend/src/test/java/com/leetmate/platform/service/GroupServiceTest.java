@@ -103,7 +103,6 @@ class GroupServiceTest {
     void leaveGroupWithoutMembersThrows() {
         StudyGroup group = new StudyGroup(UUID.randomUUID(), mentor, "Group", "desc", List.of("tag"), Instant.now());
         when(repository.findById(group.getId())).thenReturn(Optional.of(group));
-        when(userRepository.findById(mentee.getId())).thenReturn(Optional.of(mentee));
         when(groupMemberRepository.findByGroupIdAndMemberId(group.getId(), mentee.getId()))
                 .thenReturn(Optional.empty());
 

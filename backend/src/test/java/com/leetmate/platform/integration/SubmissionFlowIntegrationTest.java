@@ -96,11 +96,13 @@ class SubmissionFlowIntegrationTest {
         JsonNode submissionJson = objectMapper.readTree(submissionResult.getResponse().getContentAsString());
         String submissionId = submissionJson.get("id").asText();
 
-        mockMvc.perform(get("/submissions/" + submissionId))
+        mockMvc.perform(get("/submissions/" + submissionId)
+                        .header("Authorization", "Bearer " + menteeToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.review.complexity").value(2));
 
-        mockMvc.perform(get("/challenges/" + challengeId + "/submissions?page=0&size=10"))
+        mockMvc.perform(get("/challenges/" + challengeId + "/submissions?page=0&size=10")
+                        .header("Authorization", "Bearer " + menteeToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(submissionId));
     }

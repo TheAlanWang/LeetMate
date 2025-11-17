@@ -18,6 +18,34 @@ Spring Boot now powers the mentor–mentee workflows defined in `docs/LeetMate_P
 - Maven Wrapper for builds/tests
 - React 19 + CRA + Tailwind utility classes on the front-end
 
+### Repository & Code Tour
+#### Backend (`backend/`)
+- **Entry point & configuration** – `LeetMateApplication` wires up Spring Boot plus `config/*` for security, CORS, OpenAI credentials, the shared `WebClient`, and the optional `SampleDataLoader` seeder that injects demo mentor/mentee/chat data whenever `APP_SEED_DATA_ENABLED=true`.
+- **Security** – `config/SecurityConfig.java` configures stateless JWT auth around `/auth/**`, exposes health endpoints, and allows unauthenticated reads for public group/challenge listings. Tokens are issued/validated through `security/JwtService.java`, while `JwtAuthenticationFilter.java` injects principals backed by `UserPrincipal`.
+- **HTTP layer** – Controllers under `controller/` stay thin and delegate to services. Highlights: `AuthController` for register/login/reset, `GroupController` for mentor/mentee group flows, `ChallengeController` & `SubmissionController` for coding workflows, and `GroupChatController` for the discussion threads/messages.
+- **Domain & persistence** – Entities live in `entity/` (users, study groups, memberships, challenges, submissions/reviews, chat threads/messages, password reset tokens). Repositories in `repository/` rely on Spring Data JPA for pagination queries and membership lookups.
+- **Application services** – Core business logic sits in `service/*`:  
+  - `AuthService` and `PasswordResetService` manage lifecycle of `User` plus token issuance/logging via `service/notification/LoggingPasswordResetNotifier.java`.  
+  - `GroupService` coordinates mentor-owned `StudyGroup`s and `GroupMember` joins/leaves, enforcing role rules and deduping memberships.  
+  - `ChallengeService` keeps mentor-only challenge creation and exposes read APIs.  
+  - `SubmissionService` persists mentee code, calls an `AiReviewProvider`, and attaches `SubmissionReview` objects that include the computed cyclomatic complexity from `util/CyclomaticComplexityCalculator.java`.  
+  - `GroupChatService` enforces access to group threads/messages by checking both mentor ownership and `GroupMember` entries.
+- **AI integration** – `ai/ChatGptAiReviewProvider` (active outside the `test` profile) posts to OpenAI’s Chat Completions API using the prompt template defined inside the class, while `ai/MockAiReviewProvider` supplies deterministic data for tests or the `test` profile.
+- **Error handling** – `exception/GlobalExceptionHandler.java` normalizes validation, authentication, and domain exceptions into the `ApiErrorResponse` contract so the frontend can display consistent error messages.
+
+#### Frontend (`frontend/`)
+- **Routing & auth context** – `src/App.js` bootstraps React Router routes (`/`, `/login`, `/groups`, `/groups/:groupId`) and exposes an `AuthContext` that stores the JWT + user summary into `localStorage`, wrapping `fetch` helpers around the backend’s `/auth/*` endpoints.
+- **Landing page** – Within `App.js`, the `LandingPage`, `SearchBar`, `RoleSelection`, `GroupCard`, and `MentorActions` components combine to show hero content, fetch paginated `/groups` data, and allow mentors with valid tokens to POST to `/groups/create` and `/groups/{id}/challenges`.
+- **Authentication UX** – `src/LoginPage.js` shares the `AuthPanel` component that toggles between login/register forms, keeps role selection, offers inline password reset (`/auth/password/forgot` + `/auth/password/reset`), and reuses success/error toasts for navigation back to `/`.
+- **Group browsing** – `src/GroupListPage.js` currently ships with static mock data to demonstrate filtering interactions (categories, tags) independent of API availability. Hooks around `useAuth()` illustrate where mentee join requests would call `/groups/{id}/join`.
+- **Group details & chat** – `src/GroupPage.js` resolves the `groupId` param, fetches live metadata (falling back to demo content) and sketches the mentor/mentee chat feed with optimistic like/reply interactions that will eventually call `/groups/{id}/threads` and `/threads/{id}/messages` once those endpoints are wired up on the UI.
+
+#### High-level flows
+1. **Registration/login** – `AuthController` validates payloads, delegates hashing and persistence to `AuthService`, and issues JWTs so the frontend can store the token inside `AuthContext`.
+2. **Group lifecycle** – Mentors authenticated via JWT hit `GroupController#createGroup`, which stores `StudyGroup` rows and allows public `GET /groups` or `GET /groups/{id}` access. Mentees call `/groups/{id}/join` or `/leave`, which insert/delete `GroupMember` entries and keep the denormalized `memberCount` accurate.
+3. **Challenges & submissions** – Mentors own `/groups/{id}/challenges`, while mentees post solutions to `/challenges/{id}/submissions`. Each submission is recorded, forwarded to the `AiReviewProvider` for a review summary/suggestions, and enriched with computed complexity before being returned to the client.
+4. **Discussions** – `GroupChatService` ensures only mentors or enrolled mentees can create threads or exchange messages. Pagination helpers (`PageResponse<T>`) standardize API responses for both thread and message listings.
+
 ### Prerequisites
 1. **PostgreSQL (optional if you use Docker Compose)**
    ```bash
@@ -60,6 +88,16 @@ Default password: `postgres` (set in `docker-compose.yml`).
 ### Running the Backend Manually
 ```bash
 cd backend
+./mvnw spring-boot:run
+```
+
+If you are using the Compose Postgres (exposed on host port **55432**), start it and override the datasource like this:
+```bash
+docker-compose up -d db
+cd backend
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:55432/leetmate \
+SPRING_DATASOURCE_USERNAME=postgres \
+SPRING_DATASOURCE_PASSWORD=postgres \
 ./mvnw spring-boot:run
 ```
 The API listens on `http://localhost:8080`. Run tests with `./mvnw -q test`.
@@ -136,3 +174,18 @@ Point the dev server (`http://localhost:3000`) at the backend via `REACT_APP_API
 - Mentor console to create groups/challenges
 - Mentee console to submit solutions and view AI summaries
 - Popular groups auto-loaded from `/groups`
+
+### Discussion APIs (threads & replies)
+- Create thread: `POST /groups/{groupId}/threads` (MENTOR/MENTEE, must belong to group) with `title`, optional `description`, optional `initialMessage` (markdown), optional `codeLanguage`.
+- List threads: `GET /groups/{groupId}/threads?page=&size=` (MENTOR/MENTEE, must belong).
+- Get thread: `GET /threads/{threadId}` (MENTOR/MENTEE, must belong).
+- Post message or reply: `POST /threads/{threadId}/messages` with `content` (markdown), optional `codeLanguage`, optional `parentMessageId` for replies. Replies must reference a message in the same thread.
+- List messages: `GET /threads/{threadId}/messages?page=&size=` returns messages ordered by `createdAt` with `parentMessageId` so the UI can nest replies client-side.
+
+Example (reply):
+```bash
+curl -X POST http://localhost:8080/threads/$THREAD_ID/messages \
+  -H "Authorization: Bearer $MENTEE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Here is my fix\n\n```java\npublic int foo(){return 42;}\n```","parentMessageId":"<PARENT_ID>","codeLanguage":"java"}'
+```

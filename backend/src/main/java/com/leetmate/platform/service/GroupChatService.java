@@ -94,22 +94,67 @@ public class GroupChatService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public ThreadResponse getThread(UUID threadId, UUID requesterId) {
+        ChatThread thread = chatThreadRepository.findById(threadId)
+                .orElseThrow(() -> new ResourceNotFoundException("Thread %s not found".formatted(threadId)));
+        ensureGroupAccess(thread.getGroup(), requesterId);
+        return toThreadResponse(thread);
+    }
+
+    @Transactional
+    public void deleteThread(UUID threadId, UUID mentorId) {
+        ChatThread thread = chatThreadRepository.findById(threadId)
+                .orElseThrow(() -> new ResourceNotFoundException("Thread %s not found".formatted(threadId)));
+        StudyGroup group = thread.getGroup();
+        if (group.getMentor() == null || !group.getMentor().getId().equals(mentorId)) {
+            throw new AccessDeniedException("Only the mentor of this group can delete threads");
+        }
+        chatThreadRepository.delete(thread);
+    }
+
     @Transactional
     public MessageResponse postMessage(UUID threadId, UUID authorId, CreateMessageRequest request) {
         ChatThread thread = chatThreadRepository.findById(threadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Thread %s not found".formatted(threadId)));
         ensureGroupAccess(thread.getGroup(), authorId);
         User author = findUser(authorId);
+        ChatMessage parent = null;
+        if (request.getParentMessageId() != null) {
+            parent = chatMessageRepository.findById(request.getParentMessageId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Parent message %s not found".formatted(request.getParentMessageId())));
+            if (!parent.getThread().getId().equals(threadId)) {
+                throw new AccessDeniedException("Parent message does not belong to this thread");
+            }
+        }
         ChatMessage message = new ChatMessage(
                 UUID.randomUUID(),
                 thread,
                 author,
                 request.getContent(),
                 request.getCodeLanguage(),
-                Instant.now()
+                Instant.now(),
+                parent
         );
         chatMessageRepository.save(message);
         return toMessageResponse(message);
+    }
+
+    @Transactional
+    public void deleteMessage(UUID threadId, UUID messageId, UUID requesterId) {
+        ChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Message %s not found".formatted(messageId)));
+        if (!message.getThread().getId().equals(threadId)) {
+            throw new AccessDeniedException("Message does not belong to this thread");
+        }
+        ensureGroupAccess(message.getThread().getGroup(), requesterId);
+        boolean isMentor = message.getThread().getGroup().getMentor() != null
+                && message.getThread().getGroup().getMentor().getId().equals(requesterId);
+        boolean isAuthor = message.getAuthor().getId().equals(requesterId);
+        if (!isMentor && !isAuthor) {
+            throw new AccessDeniedException("Only mentors or message authors can delete messages");
+        }
+        chatMessageRepository.delete(message);
     }
 
     @Transactional(readOnly = true)
@@ -151,7 +196,8 @@ public class GroupChatService {
                 message.getAuthor().getRole().name(),
                 message.getContent(),
                 message.getCodeLanguage(),
-                message.getCreatedAt()
+                message.getCreatedAt(),
+                message.getParent() != null ? message.getParent().getId() : null
         );
     }
 

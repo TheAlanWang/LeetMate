@@ -25,6 +25,10 @@ public class ChatMessage {
     @JoinColumn(name = "author_id")
     private User author;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    private ChatMessage parent;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
 
@@ -38,9 +42,20 @@ public class ChatMessage {
     }
 
     public ChatMessage(UUID id, ChatThread thread, User author, String content, String codeLanguage, Instant createdAt) {
+        this(id, thread, author, content, codeLanguage, createdAt, null);
+    }
+
+    public ChatMessage(UUID id,
+                       ChatThread thread,
+                       User author,
+                       String content,
+                       String codeLanguage,
+                       Instant createdAt,
+                       ChatMessage parent) {
         this.id = id;
         this.thread = thread;
         this.author = author;
+        this.parent = parent;
         this.content = content;
         this.codeLanguage = codeLanguage;
         this.createdAt = createdAt;
@@ -56,6 +71,10 @@ public class ChatMessage {
 
     public User getAuthor() {
         return author;
+    }
+
+    public ChatMessage getParent() {
+        return parent;
     }
 
     public String getContent() {

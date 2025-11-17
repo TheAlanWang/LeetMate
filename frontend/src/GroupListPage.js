@@ -7,106 +7,61 @@ const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:8080';
 
 const GroupListPage = () => {
   const navigate = useNavigate();
-  const { user, token, isMentee } = useAuth();
+  const { token, user } = useAuth();
   
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedSubcategory, setSelectedSubcategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [fetchedGroups, setFetchedGroups] = useState([]);
+  const [joinedGroupIds, setJoinedGroupIds] = useState(new Set());
 
-  // Demo Groups Data
-  const allGroups = [
-    {
-      id: 1,
-      name: 'Array Basics',
-      description: 'Master array manipulation and common array problems',
-      category: 'leetcode',
-      subcategory: 'Array',
-      mentorName: 'John Smith',
-      memberCount: 24,
-      tags: ['Easy', 'Beginner']
-    },
-    {
-      id: 2,
-      name: 'Stack & Queue Advanced',
-      description: 'Deep dive into stack and queue data structures',
-      category: 'leetcode',
-      subcategory: 'Stack/Queue',
-      mentorName: 'Sarah Chen',
-      memberCount: 18,
-      tags: ['Medium', 'Advanced']
-    },
-    {
-      id: 3,
-      name: 'Binary Tree Patterns',
-      description: 'Learn all common binary tree traversal patterns',
-      category: 'leetcode',
-      subcategory: 'Tree',
-      mentorName: 'Mike Johnson',
-      memberCount: 32,
-      tags: ['Medium', 'Important']
-    },
-    {
-      id: 4,
-      name: 'Backtracking Techniques',
-      description: 'Master backtracking with N-Queens, Permutations, etc.',
-      category: 'leetcode',
-      subcategory: 'Backtracking',
-      mentorName: 'Alice Wong',
-      memberCount: 15,
-      tags: ['Hard', 'Advanced']
-    },
-    {
-      id: 5,
-      name: 'DP Problem Solving',
-      description: 'From 0-1 Knapsack to Complex DP Problems',
-      category: 'leetcode',
-      subcategory: 'Dynamic Programming',
-      mentorName: 'David Lee',
-      memberCount: 28,
-      tags: ['Hard', 'Popular']
-    },
-    {
-      id: 6,
-      name: 'Graph Algorithms',
-      description: 'BFS, DFS, Dijkstra, and more graph algorithms',
-      category: 'leetcode',
-      subcategory: 'Graph',
-      mentorName: 'Emma Brown',
-      memberCount: 22,
-      tags: ['Hard', 'Important']
-    },
-    {
-      id: 7,
-      name: 'System Design Basics',
-      description: 'Learn the fundamentals of system design',
-      category: 'system_design',
-      subcategory: null,
-      mentorName: 'Robert Taylor',
-      memberCount: 45,
-      tags: ['Beginner', 'Popular']
-    },
-    {
-      id: 8,
-      name: 'Scalable Architecture',
-      description: 'Design systems that scale to millions of users',
-      category: 'system_design',
-      subcategory: null,
-      mentorName: 'Lisa Anderson',
-      memberCount: 38,
-      tags: ['Advanced', 'Popular']
-    },
-    {
-      id: 9,
-      name: 'Microservices & APIs',
-      description: 'Building robust microservices and APIs',
-      category: 'system_design',
-      subcategory: null,
-      mentorName: 'James Wilson',
-      memberCount: 26,
-      tags: ['Advanced']
+  // Fetch groups from backend
+  React.useEffect(() => {
+    const fetchGroups = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`${API_BASE}/groups?page=0&size=50`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load groups');
+        }
+        setFetchedGroups(data.content || []);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchGroups();
+  }, []);
+
+  // Fetch joined groups for current user to mark joined state
+  React.useEffect(() => {
+    if (!user || !token) {
+      setJoinedGroupIds(new Set());
+      return;
     }
-  ];
+    const fetchJoined = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/groups/members/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load joined groups');
+        }
+        const ids = new Set((data || []).map((g) => g.id));
+        setJoinedGroupIds(ids);
+      } catch {
+        // silently ignore
+      }
+    };
+    fetchJoined();
+  }, [user, token]);
 
   const categories = [
     { value: 'all', label: 'All Categories' },
@@ -130,22 +85,25 @@ const GroupListPage = () => {
 
   // Filter groups based on selected filters
   const filteredGroups = useMemo(() => {
-    return allGroups.filter((group) => {
-      const categoryMatch = selectedCategory === 'all' || group.category === selectedCategory;
-      const subcategoryMatch = selectedSubcategory === 'all' || group.subcategory === selectedSubcategory;
-      const searchMatch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         group.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
+    return (fetchedGroups || []).filter((group) => {
+      const tagsLower = (group.tags || []).map((t) => t.toLowerCase());
+      const searchLower = searchQuery.toLowerCase();
+      const searchMatch =
+        group.name.toLowerCase().includes(searchLower) ||
+        group.description.toLowerCase().includes(searchLower) ||
+        tagsLower.some((t) => t.includes(searchLower));
+      const categoryMatch =
+        selectedCategory === 'all' ||
+        (group.category || '').toLowerCase() === selectedCategory ||
+        group.tags?.map((t) => t.toLowerCase()).includes(selectedCategory);
+      const subcategoryMatch =
+        selectedSubcategory === 'all' ||
+        group.tags?.map((t) => t.toLowerCase()).includes(selectedSubcategory);
       return categoryMatch && subcategoryMatch && searchMatch;
     });
-  }, [selectedCategory, selectedSubcategory, searchQuery]);
+  }, [fetchedGroups, selectedCategory, selectedSubcategory, searchQuery]);
 
   const handleJoinGroup = async (groupId) => {
-    if (!isMentee) {
-      setToast('Please log in as a mentee to join a group.');
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
     if (!token) {
       setToast('Please log in first.');
       setTimeout(() => setToast(null), 3000);
@@ -176,6 +134,11 @@ const GroupListPage = () => {
             {toast}
           </div>
         )}
+        {error && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-900 px-4 py-3 rounded-lg mb-6 text-sm">
+            {error}
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="mb-8">
@@ -192,48 +155,9 @@ const GroupListPage = () => {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Filter by Category</h3>
-          
-          <div className="space-y-4">
-            {/* Category Filter */}
-            <div>
-              <label className="text-sm font-medium text-gray-600 block mb-2">Category</label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => {
-                  setSelectedCategory(e.target.value);
-                  setSelectedSubcategory('all');
-                }}
-                className="w-full md:w-64 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-teal-400"
-              >
-                {categories.map((cat) => (
-                  <option key={cat.value} value={cat.value}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Subcategory Filter - only show for LeetCode */}
-            {selectedCategory === 'leetcode' && (
-              <div>
-                <label className="text-sm font-medium text-gray-600 block mb-2">Topic</label>
-                <select
-                  value={selectedSubcategory}
-                  onChange={(e) => setSelectedSubcategory(e.target.value)}
-                  className="w-full md:w-64 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-teal-400"
-                >
-                  {subcategories.leetcode.map((subcat) => (
-                    <option key={subcat.value} value={subcat.value}>
-                      {subcat.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Reset Button */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold text-gray-900">Filter by Category</h3>
             <button
               onClick={() => {
                 setSelectedCategory('all');
@@ -242,18 +166,51 @@ const GroupListPage = () => {
               }}
               className="text-teal-600 hover:text-teal-700 font-medium text-sm"
             >
-              Reset Filters
+              Reset
             </button>
+          </div>
+          <div className="flex items-center gap-4 flex-wrap">
+            <select
+              value={selectedCategory}
+              onChange={(e) => {
+                setSelectedCategory(e.target.value);
+                setSelectedSubcategory('all');
+              }}
+              className="border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-teal-400 text-sm"
+            >
+              {categories.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+            {selectedCategory === 'leetcode' && (
+              <select
+                value={selectedSubcategory}
+                onChange={(e) => setSelectedSubcategory(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-teal-400 text-sm"
+              >
+                {subcategories.leetcode.map((subcat) => (
+                  <option key={subcat.value} value={subcat.value}>
+                    {subcat.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
         {/* Groups Grid */}
         <div>
           <h3 className="text-xl font-bold text-gray-900 mb-4">
-            {filteredGroups.length} Group{filteredGroups.length !== 1 ? 's' : ''} Found
+            {loading ? 'Loading groups...' : `${filteredGroups.length} Group${filteredGroups.length !== 1 ? 's' : ''} Found`}
           </h3>
           
-          {filteredGroups.length === 0 ? (
+          {loading ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+              <p className="text-gray-500 text-lg">Loading...</p>
+            </div>
+          ) : filteredGroups.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <p className="text-gray-500 text-lg">No groups found matching your filters.</p>
             </div>
@@ -263,6 +220,7 @@ const GroupListPage = () => {
                 <GroupCard
                   key={group.id}
                   group={group}
+                  joined={joinedGroupIds.has(group.id)}
                   onJoin={() => handleJoinGroup(group.id)}
                   onViewDetails={() => navigate(`/groups/${group.id}`)}
                 />
@@ -276,7 +234,9 @@ const GroupListPage = () => {
 };
 
 // Group Card Component
-const GroupCard = ({ group, onJoin, onViewDetails }) => {
+const GroupCard = ({ group, onJoin, onViewDetails, joined }) => {
+  const tags = Array.from(new Set(group.tags || []));
+
   return (
     <div className="bg-white rounded-xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-200 hover:border-teal-400">
       <div className="mb-4">
@@ -295,17 +255,9 @@ const GroupCard = ({ group, onJoin, onViewDetails }) => {
           </div>
         </div>
 
-        {/* Category Badge */}
-        <div className="mb-3">
-          <span className="inline-block px-2 py-1 text-xs bg-teal-50 text-teal-700 rounded-full font-medium">
-            {group.category === 'leetcode' ? 'LeetCode' : 'System Design'}
-            {group.subcategory && ` - ${group.subcategory}`}
-          </span>
-        </div>
-
         {/* Tags */}
         <div className="flex flex-wrap gap-2 mb-4">
-          {group.tags.map((tag) => (
+          {tags.map((tag) => (
             <span key={tag} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-full">
               {tag}
             </span>
@@ -322,9 +274,10 @@ const GroupCard = ({ group, onJoin, onViewDetails }) => {
         </button>
         <button
           onClick={onJoin}
-          className="flex-1 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium text-sm"
+          disabled={joined}
+          className={`flex-1 px-4 py-2 rounded-lg transition font-medium text-sm ${joined ? 'bg-teal-100 text-teal-600 cursor-default' : 'bg-teal-500 text-white hover:bg-teal-600'}`}
         >
-          Join
+          {joined ? 'Joined' : 'Join'}
         </button>
       </div>
     </div>

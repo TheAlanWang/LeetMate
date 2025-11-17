@@ -83,6 +83,7 @@ public class SubmissionService {
      * @param submissionId identifier
      * @return response
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public SubmissionResponse getSubmission(UUID submissionId) {
         return toResponse(findSubmission(submissionId));
     }
@@ -95,6 +96,7 @@ public class SubmissionService {
      * @param size        requested size
      * @return paginated response
      */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public PageResponse<SubmissionResponse> listSubmissions(UUID challengeId, int page, int size) {
         challengeService.findChallenge(challengeId);
         validatePagination(page, size);

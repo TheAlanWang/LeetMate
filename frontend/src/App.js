@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { Search, Menu, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
+import { Search, Menu, X, ChevronDown } from 'lucide-react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import logo from './assets/logo.png';
 import GroupPage from './GroupPage';
 import LoginPage from './LoginPage';
 import GroupListPage from './GroupListPage';
+import MyGroupsPage from './MyGroupsPage';
+import CreateGroupPage from './CreateGroupPage';
 
 const resolveApiBase = () => {
   const explicitBase = process.env.REACT_APP_API_BASE;
@@ -133,14 +135,17 @@ const AuthProvider = ({ children }) => {
 };
 
 const Navbar = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isMentor } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const groupMenuRef = useRef(null);
   const navigate = useNavigate();
 
   const handleNavClick = (item) => {
     switch (item) {
       case 'Coding Groups':
-        navigate('/groups/demo');
+      case 'Find Group':
+        navigate('/find-groups');
         break;
       case 'My Group':
         if (user) {
@@ -149,11 +154,29 @@ const Navbar = () => {
           navigate('/login');
         }
         break;
+      case 'Create Group':
+        if (user && isMentor) {
+          navigate('/create-group');
+        } else {
+          navigate('/login');
+        }
+        break;
       default:
         console.log('Navigate to:', item);
     }
     setMobileMenuOpen(false);
+    setGroupMenuOpen(false);
   };
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (groupMenuRef.current && !groupMenuRef.current.contains(e.target)) {
+        setGroupMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <nav className="bg-white border-b border-gray-300" style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)' }}>
@@ -175,7 +198,40 @@ const Navbar = () => {
           </div>
 
           <div className="hidden md:flex items-center space-x-8">
-            {['Coding Groups', 'Mock Interview', 'Resume Review', 'My Mentor', 'My Group', 'Community']
+            <div className="relative" ref={groupMenuRef}>
+              <button
+                onClick={() => setGroupMenuOpen((prev) => !prev)}
+                className="text-gray-700 hover:text-teal-500 transition font-medium inline-flex items-center gap-1"
+              >
+                Group
+                <ChevronDown size={16} />
+              </button>
+              {groupMenuOpen && (
+                <div className="absolute mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-20">
+                  <button
+                    onClick={() => handleNavClick('My Group')}
+                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50"
+                  >
+                    My Group
+                  </button>
+                  <button
+                    onClick={() => handleNavClick('Find Group')}
+                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50"
+                  >
+                    Find Group
+                  </button>
+                  {isMentor && (
+                    <button
+                      onClick={() => handleNavClick('Create Group')}
+                      className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50"
+                    >
+                      Create Group
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            {['Resume Review', 'My Mentor', 'Community']
               .map((item) => (
                 <button 
                   key={item} 
@@ -228,6 +284,27 @@ const Navbar = () => {
 
         {mobileMenuOpen && (
           <div className="md:hidden mt-4 space-y-3 pb-4">
+            <button
+              onClick={() => handleNavClick('My Group')}
+              className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-100"
+            >
+              My Group
+            </button>
+            <button
+              onClick={() => handleNavClick('Find Group')}
+              className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-100"
+            >
+              Find Group
+            </button>
+            {['Resume Review', 'My Mentor', 'Community'].map((item) => (
+              <button
+                key={item}
+                onClick={() => handleNavClick(item)}
+                className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-100"
+              >
+                {item}
+              </button>
+            ))}
             {!user && (
               <Link
                 to="/login"
@@ -311,30 +388,28 @@ const RoleSelection = () => {
   }, [displayedText, isDeleting, currentTextIndex]);
 
   return (
-    <div className="bg-gray-50 py-20 mt-0">
-      <div className="max-w-[1400px] mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-          <div className="md:col-span-2 text-center">
-            <h1 className="text-6xl md:text-7xl font-bold text-gray-900 mb-6">
-              Join Mentor's Group
-            </h1>
-            <h2 className="text-5xl md:text-6xl font-bold text-teal-500 mb-8 min-h-[1.2em]">
-              Start {displayedText}
-              <span className="animate-pulse">|</span>
-            </h2>
-            <p className="text-2xl md:text-2xl text-gray-600 leading-relaxed">
-              Ship real code, practice interviews, and design systems with mentors.
-            </p>
-          </div>
-          <div className="md:col-span-1">
-            <button
-              onClick={() => navigate('/groups')}
-              className="w-80 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-xl p-5 cursor-pointer hover:shadow-xl transform hover:scale-105 transition-all duration-300"
-            >
-              <h3 className="text-3xl font-bold mb-1">Find your Group</h3>
-              <p className="text-base opacity-90">Browse and join study groups</p>
-            </button>
-          </div>
+    <div className="bg-gradient-to-b from-teal-50 via-white to-white py-16 md:py-20 mt-0 border-b border-teal-100">
+      <div className="max-w-[1200px] mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-10">
+        <div className="text-center md:text-left max-w-2xl">
+          <h1 className="text-6xl md:text-7xl font-bold text-gray-900 mb-4">
+            Join Mentor's Group
+          </h1>
+          <h2 className="text-5xl md:text-6xl font-bold text-teal-500 mb-6 min-h-[1.2em]">
+            Start {displayedText}
+            <span className="animate-pulse">|</span>
+          </h2>
+          <p className="text-xl md:text-2xl text-gray-600 leading-relaxed">
+            Ship real code, practice interviews, and design systems with mentors.
+          </p>
+        </div>
+        <div className="w-full md:w-auto">
+          <button
+            onClick={() => navigate('/find-groups')}
+            className="w-full md:w-72 bg-gradient-to-r from-teal-400 to-teal-500 text-white rounded-xl p-5 cursor-pointer hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 text-left"
+          >
+            <h3 className="text-2xl md:text-3xl font-bold mb-1">Find your Group</h3>
+            <p className="text-base opacity-90">Browse and join study groups</p>
+          </button>
         </div>
       </div>
     </div>
@@ -342,15 +417,11 @@ const RoleSelection = () => {
 };
 
 const GroupCard = ({ group, onRefresh, onMessage }) => {
-  const { token, isMentee } = useAuth();
+  const { token } = useAuth();
   const [joining, setJoining] = useState(false);
   const navigate = useNavigate();
 
   const joinGroup = async () => {
-    if (!isMentee) {
-      onMessage?.('Please log in as a mentee to join a group.');
-      return;
-    }
     if (!token) {
       onMessage?.('Please log in first.');
       return;
@@ -640,7 +711,6 @@ const LandingPage = () => {
 
   return (
     <div className="min-h-screen">
-      <SearchBar />
       <div className="max-w-5xl mx-auto w-full px-4">
         {toast && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg mt-4 text-sm">
@@ -649,15 +719,12 @@ const LandingPage = () => {
         )}
       </div>
       <RoleSelection />
-      <div className="max-w-5xl mx-auto px-4">
-        <MentorActions onSuccess={fetchGroups} onMessage={handleMessage} />
-      </div>
       <div className="bg-teal-50 py-12">
-        <div className="max-w-[1400px] mx-auto px-4 pb-12">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-3xl font-bold text-gray-900">
-              Popular Groups
-            </h2>
+      <div className="max-w-[1400px] mx-auto px-4 pb-12">
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">
+            Popular Groups
+          </h2>
             <button
               onClick={fetchGroups}
               className="text-teal-600 hover:text-teal-700 font-medium hover:underline"
@@ -702,6 +769,9 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/groups" element={<GroupListPage />} />
+          <Route path="/find-groups" element={<GroupListPage />} />
+          <Route path="/my-groups" element={<MyGroupsPage />} />
+          <Route path="/create-group" element={<CreateGroupPage />} />
           <Route path="/groups/:groupId" element={<GroupPage />} />
         </Routes>
       </Router>

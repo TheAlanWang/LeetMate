@@ -8,6 +8,7 @@ import com.leetmate.platform.dto.group.GroupResponse;
 import com.leetmate.platform.entity.UserRole;
 import com.leetmate.platform.security.UserPrincipal;
 import com.leetmate.platform.repository.UserRepository;
+import com.leetmate.platform.security.JwtAuthenticationFilter;
 import com.leetmate.platform.security.JwtService;
 import com.leetmate.platform.service.GroupService;
 import java.time.Instant;
@@ -20,6 +21,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -48,6 +51,9 @@ class GroupControllerTest {
     @MockBean
     private UserRepository userRepository;
 
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
     private final UserPrincipal mentorPrincipal =
             new UserPrincipal(UUID.randomUUID(), "mentor@demo.com", "password", UserRole.MENTOR);
 
@@ -63,12 +69,19 @@ class GroupControllerTest {
         request.setDescription("desc");
         request.setTags(List.of("graph"));
 
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(mentorPrincipal, mentorPrincipal.getPassword(), mentorPrincipal.getAuthorities()));
+
         mockMvc.perform(post("/groups")
-                        .with(SecurityMockMvcRequestPostProcessors.user(mentorPrincipal))
+                        .with(SecurityMockMvcRequestPostProcessors.authentication(
+                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                                        mentorPrincipal, mentorPrincipal.getPassword(), mentorPrincipal.getAuthorities())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("Graph Ninjas"));
+
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -78,11 +91,18 @@ class GroupControllerTest {
         request.setDescription("");
         request.setTags(List.of());
 
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(mentorPrincipal, mentorPrincipal.getPassword(), mentorPrincipal.getAuthorities()));
+
         mockMvc.perform(post("/groups")
-                        .with(SecurityMockMvcRequestPostProcessors.user(mentorPrincipal))
+                        .with(SecurityMockMvcRequestPostProcessors.authentication(
+                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                                        mentorPrincipal, mentorPrincipal.getPassword(), mentorPrincipal.getAuthorities())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+
+        SecurityContextHolder.clearContext();
     }
 
     @Test

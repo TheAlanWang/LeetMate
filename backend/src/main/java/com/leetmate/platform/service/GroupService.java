@@ -7,7 +7,6 @@ import com.leetmate.platform.dto.group.GroupResponse;
 import com.leetmate.platform.entity.GroupMember;
 import com.leetmate.platform.entity.StudyGroup;
 import com.leetmate.platform.entity.User;
-import com.leetmate.platform.entity.UserRole;
 import com.leetmate.platform.exception.ResourceNotFoundException;
 import com.leetmate.platform.repository.GroupMemberRepository;
 import com.leetmate.platform.repository.StudyGroupRepository;
@@ -17,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 
@@ -64,6 +64,21 @@ public class GroupService {
     }
 
     /**
+     * Updates group details for the owning mentor.
+     */
+    public GroupResponse updateGroup(UUID groupId, UUID mentorId, CreateGroupRequest request) {
+        StudyGroup group = find(groupId);
+        if (group.getMentor() == null || !group.getMentor().getId().equals(mentorId)) {
+            throw new AccessDeniedException("Only the mentor can edit this group");
+        }
+        group.setName(request.getName());
+        group.setDescription(request.getDescription());
+        group.setTags(request.getTags());
+        repository.save(group);
+        return toResponse(group);
+    }
+
+    /**
      * Lists groups with pagination.
      *
      * @param page requested page
@@ -99,13 +114,13 @@ public class GroupService {
      * @param groupId identifier
      * @return updated response
      */
-    public GroupResponse joinGroup(UUID groupId, UUID menteeId) {
+    public GroupResponse joinGroup(UUID groupId, UUID userId) {
         StudyGroup group = find(groupId);
-        User mentee = findMentee(menteeId);
-        if (groupMemberRepository.existsByGroupIdAndMemberId(groupId, menteeId)) {
+        User member = findUser(userId);
+        if (groupMemberRepository.existsByGroupIdAndMemberId(groupId, userId)) {
             throw new IllegalStateException("You already joined this group");
         }
-        GroupMember membership = new GroupMember(UUID.randomUUID(), group, mentee, Instant.now());
+        GroupMember membership = new GroupMember(UUID.randomUUID(), group, member, Instant.now());
         groupMemberRepository.save(membership);
         group.incrementMembers();
         repository.save(group);
@@ -118,9 +133,9 @@ public class GroupService {
      * @param groupId identifier
      * @return updated response
      */
-    public GroupResponse leaveGroup(UUID groupId, UUID menteeId) {
+    public GroupResponse leaveGroup(UUID groupId, UUID userId) {
         StudyGroup group = find(groupId);
-        var membership = groupMemberRepository.findByGroupIdAndMemberId(groupId, menteeId)
+        var membership = groupMemberRepository.findByGroupIdAndMemberId(groupId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("You are not a member of this group"));
         groupMemberRepository.delete(membership);
         group.decrementMembers();
@@ -129,14 +144,35 @@ public class GroupService {
     }
 
     /**
-     * Lists all groups a mentee has joined.
+     * Lists all groups a user has joined.
      *
-     * @param menteeId mentee identifier
+     * @param userId user identifier
      * @return joined groups in reverse join order
      */
-    public List<GroupResponse> listGroupsForMentee(UUID menteeId) {
-        findMentee(menteeId);
-        return groupMemberRepository.findGroupsByMemberId(menteeId)
+    public List<GroupResponse> listGroupsForUser(UUID userId) {
+        findUser(userId);
+        return groupMemberRepository.findGroupsByMemberId(userId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Lists groups a user joined or owns (union, de-duplicated).
+     */
+    public List<GroupResponse> listGroupsForUserIncludingOwned(UUID userId) {
+        User user = findUser(userId);
+        var owned = repository.findAllByMentorIdOrderByCreatedAtDesc(user.getId());
+        var joined = groupMemberRepository.findGroupsByMemberId(userId);
+
+        return java.util.stream.Stream.concat(
+                        owned.stream(),
+                        joined.stream())
+                .collect(java.util.stream.Collectors.toMap(
+                        StudyGroup::getId,
+                        g -> g,
+                        (g1, g2) -> g1))
+                .values()
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -177,12 +213,8 @@ public class GroupService {
                 "size must be between 1 and " + MAX_PAGE_SIZE);
     }
 
-    private User findMentee(UUID menteeId) {
-        User mentee = userRepository.findById(menteeId)
-                .orElseThrow(() -> new ResourceNotFoundException("User %s not found".formatted(menteeId)));
-        if (mentee.getRole() != UserRole.MENTEE) {
-            throw new IllegalStateException("Only mentees can join groups");
-        }
-        return mentee;
+    private User findUser(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User %s not found".formatted(userId)));
     }
 }

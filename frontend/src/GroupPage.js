@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Send, Heart, MessageCircle, ArrowLeft } from 'lucide-react';
+import { Send, ArrowLeft, MoreVertical } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from './App';
+import TagSelector from './components/TagSelector';
 
 const resolveApiBase = () => {
   const explicitBase = process.env.REACT_APP_API_BASE;
@@ -21,18 +22,25 @@ const GroupPage = () => {
   const { groupId } = useParams();
   const navigate = useNavigate();
   const { user, token } = useAuth();
-  
+
   const [group, setGroup] = useState(null);
-  const [posts, setPosts] = useState([]);
+  const [threads, setThreads] = useState([]);
+  const [messagesByThread, setMessagesByThread] = useState({});
+  const [replyDrafts, setReplyDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [newPostContent, setNewPostContent] = useState('');
-  const [newPostLanguage, setNewPostLanguage] = useState('python');
-  const [newPostCode, setNewPostCode] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [threadsError, setThreadsError] = useState(null);
   const [toast, setToast] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+  const [joining, setJoining] = useState(false);
+  const [joined, setJoined] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', description: '', tags: [] });
+  const [threadForm, setThreadForm] = useState({ title: '', description: '' });
+  const [expandedMessages, setExpandedMessages] = useState({});
+  const [threadMessageDrafts, setThreadMessageDrafts] = useState({});
+  const [showThreadForm, setShowThreadForm] = useState(false);
 
-  // Demo 数据
   const demoGroup = {
     id: 'demo',
     name: 'Daily Challenge',
@@ -41,58 +49,28 @@ const GroupPage = () => {
     mentorName: 'John Smith'
   };
 
-  const demoPosts = [
-    {
-      id: 1,
-      authorName: 'Alice Chen',
-      authorRole: 'MENTEE',
-      content: 'Just solved the Two Sum problem! Here\'s my solution:',
-      language: 'python',
-      code: 'def twoSum(nums, target):\n    seen = {}\n    for i, num in enumerate(nums):\n        if target - num in seen:\n            return [seen[target - num], i]\n        seen[num] = i\n    return []',
-      likes: 5,
-      liked: false,
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-      replies: [
-        {
-          id: 11,
-          authorName: 'John Smith',
-          authorRole: 'MENTOR',
-          content: 'Great solution! Time complexity is O(n) which is optimal. Consider adding edge case handling for empty input.',
-          createdAt: new Date(Date.now() - 1800000).toISOString()
-        }
-      ]
-    },
-    {
-      id: 2,
-      authorName: 'Bob Wang',
-      authorRole: 'MENTEE',
-      content: 'Having trouble with the recursion approach. Can someone explain?',
-      language: 'java',
-      code: 'public int fibonacci(int n) {\n    if (n <= 1) return n;\n    return fibonacci(n-1) + fibonacci(n-2);\n}',
-      likes: 3,
-      liked: false,
-      createdAt: new Date(Date.now() - 7200000).toISOString(),
-      replies: []
-    }
-  ];
-
-  // 获取 Group 信息
   useEffect(() => {
     const fetchGroup = async () => {
       try {
         if (groupId === 'demo') {
           setGroup(demoGroup);
-          setPosts(demoPosts);
+          setThreads([]);
           setLoading(false);
           return;
         }
-        
+
         const response = await fetch(`${API_BASE}/groups/${groupId}`);
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(data.message || 'Failed to load group');
         }
         setGroup(data);
+        setEditForm({ name: data.name, description: data.description, tags: data.tags || [] });
+        try {
+          await fetchThreads(data.id);
+        } catch (err) {
+          setThreadsError(err.message);
+        }
       } catch (err) {
         setError(err.message);
       }
@@ -100,390 +78,555 @@ const GroupPage = () => {
     fetchGroup();
   }, [groupId]);
 
-  // 获取 Posts
-  const fetchPosts = useCallback(() => {
-    if (groupId === 'demo') {
+  // Check if current user already joined this group
+  useEffect(() => {
+    if (!user || !token || !groupId) {
+      setJoined(false);
       return;
     }
-    setLoading(true);
-    fetch(`${API_BASE}/groups/${groupId}/posts`)
-      .then(async (response) => {
+    const checkJoined = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/groups/members/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(data.message || 'Failed to load posts');
+          return;
         }
-        setPosts(data || []);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [groupId]);
+        const isMember = Array.isArray(data) && data.some((g) => g.id === groupId);
+        setJoined(isMember);
+      } catch {
+        setJoined(false);
+      }
+    };
+    checkJoined();
+  }, [user, token, groupId]);
 
-  useEffect(() => {
-    fetchPosts();
-  }, [fetchPosts]);
+  const fetchThreads = useCallback(async (gid) => {
+    if (gid === 'demo') return;
+    setDeleteError(null);
+    const response = await fetch(`${API_BASE}/groups/${gid}/threads?page=0&size=20`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to load threads');
+    }
+    setThreadsError(null);
+    setThreads(data.content || []);
+    // Fetch messages for all threads to show expanded discussions
+    const messagesMap = {};
+    for (const t of data.content || []) {
+      try {
+        const resp = await fetch(`${API_BASE}/threads/${t.id}/messages?page=0&size=100`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        const msgs = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+          messagesMap[t.id] = msgs.content || [];
+        }
+      } catch {
+        // ignore per-thread errors
+      }
+    }
+    setMessagesByThread(messagesMap);
+  }, [token, groupId]);
 
-  // 发送新 Post
-  const handlePostSubmit = async (e) => {
-    e.preventDefault();
-    if (!token) {
-      setToast('Please log in first');
+  const renderMarkdown = (content, messageId) => {
+    if (!content) return null;
+    const escapeHtml = (str) =>
+      str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    const isLong = content.length > 300;
+    const expanded = expandedMessages[messageId];
+    const displayText = isLong && !expanded ? `${content.slice(0, 300)}...` : content;
+    let html = escapeHtml(displayText);
+    html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto mb-3"><code>$1</code></pre>');
+    html = html.replace(/\n/g, '<br/>');
+    return (
+      <div className="text-gray-800 leading-relaxed">
+        <div dangerouslySetInnerHTML={{ __html: html }} />
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpandedMessages((prev) => ({ ...prev, [messageId]: !expanded }))}
+            className="mt-2 text-sm text-teal-600 hover:text-teal-700"
+          >
+            {expanded ? 'Show less' : 'Show more'}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const handleReply = async (parentId, threadId) => {
+    const content = replyDrafts[parentId] || '';
+    if (!content.trim()) {
+      setToast('Please enter a reply.');
       return;
     }
-    if (!newPostContent.trim()) {
-      setToast('Please enter content');
-      return;
-    }
-
-    setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE}/groups/${groupId}/posts`, {
+      const response = await fetch(`${API_BASE}/threads/${threadId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({
-          content: newPostContent,
-          language: newPostLanguage,
-          code: newPostCode || null
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to post');
-      }
-      setToast('Post published successfully!');
-      setNewPostContent('');
-      setNewPostCode('');
-      setNewPostLanguage('python');
-      fetchPosts();
-    } catch (err) {
-      setToast(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 点赞
-  const handleLike = async (postId) => {
-    if (!token) {
-      setToast('Please log in first');
-      return;
-    }
-    try {
-      const response = await fetch(`${API_BASE}/groups/${groupId}/posts/${postId}/like`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      if (!response.ok) {
-        throw new Error('Failed to like');
-      }
-      fetchPosts();
-    } catch (err) {
-      setToast(err.message);
-    }
-  };
-
-  // 添加回复
-  const handleReply = async (postId, replyContent) => {
-    if (!token) {
-      setToast('Please log in first');
-      return;
-    }
-    if (!replyContent.trim()) {
-      setToast('Please enter reply');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE}/groups/${groupId}/posts/${postId}/replies`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ content: replyContent })
+        body: JSON.stringify({ content, parentMessageId: parentId })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.message || 'Failed to reply');
       }
-      setToast('Reply posted!');
-      fetchPosts();
+      setReplyDrafts((prev) => ({ ...prev, [parentId]: '' }));
+      await fetchThreads(groupId);
     } catch (err) {
       setToast(err.message);
     }
   };
 
   useEffect(() => {
-    if (!toast) return;
-    const timeout = setTimeout(() => setToast(null), 3000);
+    if (!toast) {
+      return;
+    }
+    const timeout = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(timeout);
   }, [toast]);
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <h1 className="text-4xl font-bold text-gray-900">
-            {group?.name || 'Loading...'}
-          </h1>
-          <p className="text-gray-600 mt-2">{group?.description}</p>
-          <div className="flex gap-4 mt-4">
-            <span className="text-sm text-gray-600">
-              Members: <strong>{group?.memberCount || 0}</strong>
-            </span>
-            <span className="text-sm text-gray-600">
-              Mentor: <strong>{group?.mentorName || 'TBD'}</strong>
-            </span>
-          </div>
-        </div>
-      </div>
+  const handleNavigateBack = () => navigate('/my-groups');
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Toast */}
-        {toast && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg mb-6 text-sm">
-            {toast}
-          </div>
-        )}
+  const isOwner = user && group && group.mentorId === user.id;
+  const [ownerMenuOpen, setOwnerMenuOpen] = useState(false);
 
-        {/* Error */}
-        {error && !group && (
-          <div className="bg-red-50 border border-red-200 text-red-900 px-4 py-3 rounded-lg mb-6 text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* New Post Form */}
-        {user && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Share Your Progress
-            </h3>
-            <form onSubmit={handlePostSubmit} className="space-y-4">
-              <textarea
-                value={newPostContent}
-                onChange={(e) => setNewPostContent(e.target.value)}
-                placeholder="What's on your mind? Share your solution, question, or progress..."
-                rows={3}
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 resize-none"
-              />
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-600 block mb-2">
-                    Language
-                  </label>
-                  <select
-                    value={newPostLanguage}
-                    onChange={(e) => setNewPostLanguage(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-teal-400"
-                  >
-                    {['python', 'java', 'cpp', 'js'].map((lang) => (
-                      <option key={lang} value={lang}>
-                        {lang.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <textarea
-                value={newPostCode}
-                onChange={(e) => setNewPostCode(e.target.value)}
-                placeholder="(Optional) Paste your code here..."
-                rows={4}
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 font-mono text-sm resize-none"
-              />
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full bg-teal-500 text-white rounded-lg py-3 font-medium hover:bg-teal-600 transition disabled:bg-gray-400"
-              >
-                {submitting ? 'Posting...' : 'Post'}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* Posts List */}
-        {loading ? (
-          <div className="text-center text-gray-600 py-10">Loading posts...</div>
-        ) : posts.length === 0 ? (
-          <div className="text-center text-gray-500 py-10">
-            No posts yet. Be the first to share!
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {posts.map((post) => (
-              <Post
-                key={post.id}
-                post={post}
-                currentUser={user}
-                onLike={() => handleLike(post.id)}
-                onReply={(content) => handleReply(post.id, content)}
-                groupId={groupId}
-                token={token}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Post 组件
-const Post = ({ post, currentUser, onLike, onReply, groupId, token }) => {
-  const [showReplyForm, setShowReplyForm] = useState(false);
-  const [replyContent, setReplyContent] = useState('');
-  const [replying, setReplying] = useState(false);
-  const [liked, setLiked] = useState(post.liked || false);
-
-  const handleReplySubmit = async (e) => {
-    e.preventDefault();
-    setReplying(true);
+  const handleJoinGroup = async () => {
+    if (!token) {
+      setToast('Please log in first.');
+      return;
+    }
+    setJoining(true);
     try {
-      await onReply(replyContent);
-      setReplyContent('');
-      setShowReplyForm(false);
+      const response = await fetch(`${API_BASE}/groups/${groupId}/join`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to join group');
+      }
+      setToast(`Joined "${data.name}"`);
+      setGroup(data);
+      setJoined(true);
+      await fetchThreads(groupId);
+    } catch (err) {
+      setToast(err.message);
     } finally {
-      setReplying(false);
+      setJoining(false);
     }
   };
 
-  const handleLikeClick = () => {
-    setLiked(!liked);
-    onLike();
+  const handleSaveGroup = async () => {
+    if (!token) {
+      setToast('Please log in first.');
+      return;
+    }
+    if (!editForm.name.trim()) {
+      setToast('Name is required.');
+      return;
+    }
+    const tags = Array.from(new Set((editForm.tags || []).map((t) => t.trim()).filter(Boolean)));
+    if (tags.length === 0) {
+      setToast('Please add at least one tag.');
+      return;
+    }
+    setEditForm((prev) => ({ ...prev, tags }));
+    try {
+      const response = await fetch(`${API_BASE}/groups/${groupId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ ...editForm, tags })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update group');
+      }
+      setGroup(data);
+      setEditMode(false);
+      setToast('Group updated');
+    } catch (err) {
+      setToast(err.message);
+    }
   };
 
+  const postMessage = async (threadId, content, parentId = null) => {
+    if (!token) {
+      setToast('Please log in first.');
+      return;
+    }
+    if (!content.trim()) {
+      setToast('Please enter content.');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/threads/${threadId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ content, parentMessageId: parentId })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to post message');
+      }
+      await fetchThreads(groupId);
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  const handleCreateThread = async () => {
+    if (!token) {
+      setToast('Please log in first.');
+      return;
+    }
+    if (!joined) {
+      setToast('Join this group to start a discussion.');
+      return;
+    }
+    if (!threadForm.title.trim()) {
+      setToast('Please enter a thread title.');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/groups/${groupId}/threads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ title: threadForm.title, description: threadForm.description })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create thread');
+      }
+      setToast('Thread created');
+      setThreadForm({ title: '', description: '' });
+      await fetchThreads(groupId);
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  if (loading && !group) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex items-center space-x-3 text-teal-600">
+          <div className="w-4 h-4 rounded-full bg-teal-500 animate-pulse" />
+          <div className="w-4 h-4 rounded-full bg-teal-500 animate-pulse" />
+          <div className="w-4 h-4 rounded-full bg-teal-500 animate-pulse" />
+          <span className="text-lg font-medium">Loading group...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white shadow-md rounded-xl p-6 max-w-md text-center">
+          <p className="text-rose-600 font-semibold mb-2">Error loading group</p>
+          <p className="text-gray-700 mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/groups')}
+            className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition"
+          >
+            Back to Groups
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      {/* Post Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center">
-            <span className="text-teal-600 font-semibold">
-              {post.authorName?.charAt(0).toUpperCase() || 'U'}
-            </span>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-900">{post.authorName}</p>
-            <p className="text-xs text-gray-500">{new Date(post.createdAt).toLocaleString()}</p>
-            {post.authorRole && (
-              <span className="inline-block mt-1 px-2 py-1 text-xs bg-teal-50 text-teal-700 rounded-full">
-                {post.authorRole}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Post Content */}
-      <p className="text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
-
-      {/* Code Block */}
-      {post.code && (
-        <div className="bg-gray-900 rounded-lg p-4 mb-4 overflow-x-auto">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs text-gray-400 font-semibold">
-              {post.language?.toUpperCase()}
-            </span>
-          </div>
-          <pre className="text-gray-200 text-sm font-mono">
-            <code>{post.code}</code>
-          </pre>
-        </div>
-      )}
-
-      {/* Post Actions */}
-      <div className="flex items-center gap-6 mb-4 text-gray-600 border-t border-b border-gray-100 py-3">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-5xl mx-auto px-4 py-6">
         <button
-          onClick={handleLikeClick}
-          className={`flex items-center gap-2 transition ${
-            liked ? 'text-red-500' : 'hover:text-red-500'
-          }`}
+          onClick={handleNavigateBack}
+          className="flex items-center space-x-2 text-teal-600 hover:text-teal-700 mb-4"
         >
-          <Heart size={18} fill={liked ? 'currentColor' : 'none'} />
-          <span className="text-sm">{post.likes || 0}</span>
+          <ArrowLeft size={18} />
+          <span>Back to Groups</span>
         </button>
-        <button
-          onClick={() => setShowReplyForm(!showReplyForm)}
-          className="flex items-center gap-2 hover:text-teal-500 transition"
-        >
-          <MessageCircle size={18} />
-          <span className="text-sm">{post.replies?.length || 0}</span>
-        </button>
-      </div>
 
-      {/* Reply Form */}
-      {showReplyForm && (
-        <form onSubmit={handleReplySubmit} className="mb-4 space-y-3">
-          <textarea
-            value={replyContent}
-            onChange={(e) => setReplyContent(e.target.value)}
-            placeholder="Write a reply..."
-            rows={3}
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-teal-400 resize-none text-sm"
-          />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={replying}
-              className="px-4 py-2 bg-teal-500 text-white rounded-lg text-sm font-medium hover:bg-teal-600 transition disabled:bg-gray-400 flex items-center gap-2"
-            >
-              <Send size={16} />
-              Reply
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowReplyForm(false)}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
-            >
-              Cancel
-            </button>
+        {toast && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg mb-4 text-sm">
+            {toast}
           </div>
-        </form>
-      )}
+        )}
+        {deleteError && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-900 px-4 py-3 rounded-lg mb-4 text-sm">
+            {deleteError}
+          </div>
+        )}
 
-      {/* Replies */}
-      {post.replies && post.replies.length > 0 && (
-        <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
-          {post.replies.map((reply) => (
-            <div key={reply.id} className="pl-4 border-l-2 border-gray-200">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                  <span className="text-gray-600 font-semibold text-sm">
-                    {reply.authorName?.charAt(0).toUpperCase() || 'U'}
-                  </span>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6 relative">
+          {isOwner && (
+            <div className="absolute top-4 right-4">
+              <button
+                onClick={() => setOwnerMenuOpen((prev) => !prev)}
+                className="p-2 rounded-full hover:bg-gray-100 text-gray-600"
+                aria-label="Group actions"
+              >
+                <MoreVertical size={18} />
+              </button>
+              {ownerMenuOpen && (
+                <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-20">
+                  <button
+                    onClick={() => {
+                      setOwnerMenuOpen(false);
+                      setEditMode(true);
+                    }}
+                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 text-sm"
+                  >
+                    Edit group
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOwnerMenuOpen(false);
+                      setToast('Delete group coming soon.');
+                    }}
+                    className="block w-full text-left px-4 py-2 text-rose-600 hover:bg-rose-50 text-sm"
+                  >
+                    Delete group
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm text-gray-900">
-                    {reply.authorName}
-                    {reply.authorRole && (
-                      <span className="ml-2 text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded">
-                        {reply.authorRole}
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-500 mb-1">
-                    {new Date(reply.createdAt).toLocaleString()}
-                  </p>
-                  <p className="text-gray-800 text-sm whitespace-pre-wrap">
-                    {reply.content}
-                  </p>
+              )}
+            </div>
+          )}
+          {editMode ? (
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-teal-400"
+              />
+              <textarea
+                value={editForm.description}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                rows={3}
+                className="w-full border border-gray-300 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-teal-400"
+              />
+              <TagSelector
+                value={editForm.tags}
+                onChange={(tags) => setEditForm((prev) => ({ ...prev, tags }))}
+                max={5}
+              />
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleSaveGroup}
+                  className="px-5 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => {
+                    setEditMode(false);
+                    setEditForm({ name: group.name, description: group.description, tags: group.tags || [] });
+                  }}
+                  className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">{group?.name}</h1>
+          <p className="text-gray-600 mb-3">{group?.description}</p>
+          {group?.tags && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {group.tags.map((tag) => (
+                <span key={tag} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">{tag}</span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center space-x-4 text-gray-700 mb-3">
+            <span className="font-semibold text-teal-600">{group?.memberCount} members</span>
+            {group?.mentorName && <span>Mentor: {group.mentorName}</span>}
+          </div>
+          <div className="flex items-center gap-3 justify-end">
+            <button
+              onClick={() => fetchThreads(groupId).catch((err) => setThreadsError(err.message))}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-teal-400 transition"
+            >
+              Refresh Threads
+            </button>
+            <button
+              onClick={handleJoinGroup}
+              disabled={joining || joined}
+              className={`px-5 py-2 rounded-lg transition ${joined ? 'bg-teal-100 text-teal-600 cursor-default' : 'bg-teal-500 text-white hover:bg-teal-600'}`}
+            >
+              {joined ? 'Joined' : joining ? 'Joining...' : 'Join Group'}
+            </button>
+          </div>
+            </>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <span className="text-lg font-semibold text-gray-900">Discussion</span>
+          {threads.length === 0 && <span className="text-sm text-gray-500">No threads yet.</span>}
+            <div className="flex items-center gap-3">
+              {(joined || isOwner) && (
+                <button
+                  type="button"
+                  onClick={() => setShowThreadForm((prev) => !prev)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:border-teal-400 transition text-sm"
+                >
+                  {showThreadForm ? 'Hide form' : 'New Thread'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {(joined || isOwner) && showThreadForm && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5">
+              <h4 className="text-md font-semibold text-gray-900 mb-3">Create a discussion thread</h4>
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={threadForm.title}
+                  onChange={(e) => setThreadForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="Thread title"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-teal-400"
+                />
+                <textarea
+                  value={threadForm.description}
+                  onChange={(e) => setThreadForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Thread description (optional)"
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-teal-400"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleCreateThread}
+                    className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition"
+                  >
+                    Create Thread
+                  </button>
                 </div>
               </div>
             </div>
-          ))}
+          )}
+
+          {threadsError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-900 px-4 py-3 rounded-lg mb-4 text-sm">
+              {threadsError.includes('denied') || threadsError.includes('access') || threadsError.includes('Forbidden')
+                ? 'Join this group to view threads.'
+                : threadsError}
+            </div>
+          )}
+
+          {threads.map((thread) => {
+            const messages = messagesByThread[thread.id] || [];
+            const repliesByParent = messages.reduce((acc, msg) => {
+              const parent = msg.parentMessageId || null;
+              acc[parent] = acc[parent] || [];
+              acc[parent].push(msg);
+              return acc;
+            }, {});
+            return (
+              <div key={thread.id} className="bg-gray-50 rounded-xl p-5 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900">{thread.title}</h4>
+                    <p className="text-xs text-gray-500">{new Date(thread.createdAt).toLocaleString()}</p>
+                  </div>
+                </div>
+                {(joined || isOwner) && (
+                  <div className="mb-3">
+                    <textarea
+                      value={threadMessageDrafts[thread.id] || ''}
+                      onChange={(e) => setThreadMessageDrafts((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                      placeholder="Post a message to this thread..."
+                      rows={2}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400"
+                    />
+                    <div className="flex justify-end mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const content = threadMessageDrafts[thread.id] || '';
+                          setThreadMessageDrafts((prev) => ({ ...prev, [thread.id]: '' }));
+                          postMessage(thread.id, content, null);
+                        }}
+                        className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-sm"
+                      >
+                        Post
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {repliesByParent[null]?.length === 0 && (
+                  <p className="text-sm text-gray-500">No messages yet.</p>
+                )}
+                {repliesByParent[null]?.map((msg) => {
+                  const renderMessageTree = (message, depth = 0) => (
+                    <div
+                      key={message.id}
+                      className={`bg-white rounded-lg p-4 mb-3 border border-gray-200 ${depth > 0 ? 'ml-4' : ''}`}
+                      style={{ marginLeft: depth > 0 ? depth * 12 : 0 }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="font-semibold text-gray-900 text-sm">{message.authorName || 'Member'}</p>
+                          <p className="text-xs text-gray-500">{message.authorRole}</p>
+                        </div>
+                        <span className="text-xs text-gray-500">{new Date(message.createdAt).toLocaleString()}</span>
+                      </div>
+                      {renderMarkdown(message.content, message.id)}
+                      {(joined || isOwner) && (
+                        <div className="mt-3">
+                          <textarea
+                            value={replyDrafts[message.id] || ''}
+                            onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [message.id]: e.target.value }))}
+                            placeholder="Add a reply..."
+                            rows={2}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400"
+                          />
+                          <div className="flex justify-end mt-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleReply(message.id, thread.id)}
+                              className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-sm"
+                            >
+                              Reply
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {(repliesByParent[message.id] || []).map((child) => renderMessageTree(child, depth + 1))}
+                    </div>
+                  );
+                  return renderMessageTree(msg, 0);
+                })}
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
     </div>
   );
 };

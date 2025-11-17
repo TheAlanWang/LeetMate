@@ -15,6 +15,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,12 +50,23 @@ public class GroupController {
      * @param request payload
      * @return created group
      */
-    @PostMapping("/create")
+    @PostMapping({"", "/create"})
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('MENTOR')")
     public GroupResponse createGroup(@AuthenticationPrincipal UserPrincipal user,
                                      @Valid @RequestBody CreateGroupRequest request) {
         return groupService.createGroup(request, user.getId());
+    }
+
+    /**
+     * Updates an existing study group (mentor only).
+     */
+    @PutMapping("/{groupId}")
+    @PreAuthorize("hasRole('MENTOR')")
+    public GroupResponse updateGroup(@AuthenticationPrincipal UserPrincipal user,
+                                     @PathVariable UUID groupId,
+                                     @Valid @RequestBody CreateGroupRequest request) {
+        return groupService.updateGroup(groupId, user.getId(), request);
     }
 
     /**
@@ -82,35 +94,35 @@ public class GroupController {
     }
 
     /**
-     * Adds a mentee to the group and increments the member count.
+     * Adds a member (mentor or mentee) to the group and increments the member count.
      *
      * @param groupId identifier
      * @return updated response
      */
     @PostMapping("/{groupId}/join")
-    @PreAuthorize("hasRole('MENTEE')")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
     public GroupResponse joinGroup(@AuthenticationPrincipal UserPrincipal user,
                                    @PathVariable UUID groupId) {
         return groupService.joinGroup(groupId, user.getId());
     }
 
     /**
-     * Removes a mentee from the group.
+     * Removes a member from the group.
      *
      * @param groupId identifier
      * @return updated response
      */
     @PostMapping("/{groupId}/leave")
-    @PreAuthorize("hasRole('MENTEE')")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
     public GroupResponse leaveGroup(@AuthenticationPrincipal UserPrincipal user,
                                     @PathVariable UUID groupId) {
         return groupService.leaveGroup(groupId, user.getId());
     }
 
     /**
-     * Lists the groups a mentee has joined.
+     * Lists the groups a user has joined.
      *
-     * @param menteeId mentee identifier
+     * @param menteeId user identifier
      * @return joined groups
      */
     @GetMapping("/mentees/{menteeId}")
@@ -120,7 +132,20 @@ public class GroupController {
         if (!user.getId().equals(menteeId) && user.getRole() != UserRole.MENTOR) {
             throw new AccessDeniedException("You can only view your own joined groups");
         }
-        return groupService.listGroupsForMentee(menteeId);
+        return groupService.listGroupsForUser(menteeId);
+    }
+
+    /**
+     * Lists groups a user joined or owns.
+     */
+    @GetMapping("/members/{userId}")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
+    public List<GroupResponse> listGroupsForUser(@AuthenticationPrincipal UserPrincipal user,
+                                                 @PathVariable UUID userId) {
+        if (!user.getId().equals(userId) && user.getRole() != UserRole.MENTOR) {
+            throw new AccessDeniedException("You can only view your own joined groups");
+        }
+        return groupService.listGroupsForUser(userId);
     }
 
     /**

@@ -73,7 +73,6 @@ class SubmissionServiceTest {
     @Test
     void listSubmissionsSupportsPagination() {
         when(challengeService.findChallenge(challenge.getId())).thenReturn(challenge);
-        when(userRepository.findById(mentee.getId())).thenReturn(Optional.of(mentee));
         Submission persisted = new Submission(UUID.randomUUID(), challenge, mentee, "java", "code", 1, Instant.now());
         when(submissionRepository.findByChallenge_IdOrderByCreatedAtDesc(eq(challenge.getId()), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(List.of(persisted), PageRequest.of(0, 1), 1));

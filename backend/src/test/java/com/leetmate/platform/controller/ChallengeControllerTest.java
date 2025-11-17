@@ -6,6 +6,7 @@ import com.leetmate.platform.dto.challenge.CreateChallengeRequest;
 import com.leetmate.platform.entity.ChallengeDifficulty;
 import com.leetmate.platform.entity.UserRole;
 import com.leetmate.platform.security.UserPrincipal;
+import com.leetmate.platform.security.JwtAuthenticationFilter;
 import com.leetmate.platform.service.ChallengeService;
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +18,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -39,6 +42,9 @@ class ChallengeControllerTest {
     @MockBean
     private ChallengeService challengeService;
 
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
     private final UserPrincipal mentorPrincipal =
             new UserPrincipal(UUID.randomUUID(), "mentor@demo.com", "pwd", UserRole.MENTOR);
 
@@ -58,12 +64,19 @@ class ChallengeControllerTest {
         request.setDifficulty("EASY");
         request.setStarterCode("class Solution {}");
 
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(mentorPrincipal, mentorPrincipal.getPassword(), mentorPrincipal.getAuthorities()));
+
         mockMvc.perform(post("/groups/" + groupId + "/challenges")
-                        .with(SecurityMockMvcRequestPostProcessors.user(mentorPrincipal))
+                        .with(SecurityMockMvcRequestPostProcessors.authentication(
+                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                                        mentorPrincipal, mentorPrincipal.getPassword(), mentorPrincipal.getAuthorities())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.title").value("Two Sum"));
+
+        SecurityContextHolder.clearContext();
     }
 
     @Test

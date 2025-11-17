@@ -1,6 +1,9 @@
 -- LeetMate Platform Database Initialization Script
 -- This script clears existing data and initializes the database with test data
 
+-- Align schema for chat replies (harmless if already present)
+ALTER TABLE IF EXISTS chat_messages ADD COLUMN IF NOT EXISTS parent_id UUID;
+
 -- Clear existing data (in reverse order of dependencies)
 TRUNCATE TABLE submission_review_suggestions CASCADE;
 TRUNCATE TABLE submission_reviews CASCADE;

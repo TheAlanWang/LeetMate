@@ -16,6 +16,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -51,6 +52,13 @@ public class GroupChatController {
         return groupChatService.listThreads(groupId, user.getId(), page, size);
     }
 
+    @GetMapping("/threads/{threadId}")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
+    public ThreadResponse getThread(@PathVariable UUID threadId,
+                                    @AuthenticationPrincipal UserPrincipal user) {
+        return groupChatService.getThread(threadId, user.getId());
+    }
+
     @PostMapping("/threads/{threadId}/messages")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
@@ -67,5 +75,20 @@ public class GroupChatController {
                                                       @RequestParam(defaultValue = "0") int page,
                                                       @RequestParam(defaultValue = "50") int size) {
         return groupChatService.listMessages(threadId, user.getId(), page, size);
+    }
+
+    @DeleteMapping("/threads/{threadId}")
+    @PreAuthorize("hasRole('MENTOR')")
+    public void deleteThread(@PathVariable UUID threadId,
+                             @AuthenticationPrincipal UserPrincipal user) {
+        groupChatService.deleteThread(threadId, user.getId());
+    }
+
+    @DeleteMapping("/threads/{threadId}/messages/{messageId}")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
+    public void deleteMessage(@PathVariable UUID threadId,
+                              @PathVariable UUID messageId,
+                              @AuthenticationPrincipal UserPrincipal user) {
+        groupChatService.deleteMessage(threadId, messageId, user.getId());
     }
 }

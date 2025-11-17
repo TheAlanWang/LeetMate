@@ -7,6 +7,7 @@ import com.leetmate.platform.dto.submission.SubmissionResponse;
 import com.leetmate.platform.dto.submission.SubmitSolutionRequest;
 import com.leetmate.platform.entity.UserRole;
 import com.leetmate.platform.security.UserPrincipal;
+import com.leetmate.platform.security.JwtAuthenticationFilter;
 import com.leetmate.platform.service.SubmissionService;
 import java.time.Instant;
 import java.util.List;
@@ -18,6 +19,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -40,6 +43,9 @@ class SubmissionControllerTest {
     @MockBean
     private SubmissionService submissionService;
 
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
     private final UserPrincipal menteePrincipal =
             new UserPrincipal(UUID.randomUUID(), "mentee@demo.com", "pwd", UserRole.MENTEE);
 
@@ -58,12 +64,19 @@ class SubmissionControllerTest {
         request.setLanguage("java");
         request.setCode("class Solution {}");
 
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(menteePrincipal, menteePrincipal.getPassword(), menteePrincipal.getAuthorities()));
+
         mockMvc.perform(post("/challenges/" + challengeId + "/submissions")
-                        .with(SecurityMockMvcRequestPostProcessors.user(menteePrincipal))
+                        .with(SecurityMockMvcRequestPostProcessors.authentication(
+                                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                                        menteePrincipal, menteePrincipal.getPassword(), menteePrincipal.getAuthorities())))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.review.summary").value("Summary"));
+
+        SecurityContextHolder.clearContext();
     }
 
     @Test

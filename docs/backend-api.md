@@ -103,7 +103,7 @@ Typical codes: `400` validation/business errors, `401` unauthenticated, `403` fo
 ### 3.1 POST `/groups/create`
 
 - **Access**: `MENTOR`
-- **Purpose**: Mentor creates a study group.
+- **Purpose**: Mentor creates a study group. Alias: `POST /groups`.
 - **Request** `CreateGroupRequest`
 
 | Field | Type | Required | Validation | Notes |
@@ -237,7 +237,7 @@ Typical codes: `400` validation/business errors, `401` unauthenticated, `403` fo
 ## 6. Group Chat
 
 > `ThreadResponse` fields: `id`, `groupId`, `title`, `description`, `createdAt`, `createdById`, `createdByName`.  
-> `MessageResponse` fields: `id`, `threadId`, `authorId`, `authorName`, `authorRole`, `content`, `codeLanguage`, `createdAt`.
+> `MessageResponse` fields: `id`, `threadId`, `authorId`, `authorName`, `authorRole`, `content`, `codeLanguage`, `createdAt`, `parentMessageId`.
 
 All endpoints require authentication. The service also checks whether the caller is the group mentor or a joined mentee; otherwise it responds with `403 You are not part of this group`.
 
@@ -263,20 +263,27 @@ All endpoints require authentication. The service also checks whether the caller
 - **Query params**: `page` default `0`, `size` default `20`, max `100`
 - **Response**: `PageResponse<ThreadResponse>`
 
-### 6.3 POST `/threads/{threadId}/messages`
+### 6.3 GET `/threads/{threadId}`
 
 - **Access**: `MENTOR` or `MENTEE`
-- **Purpose**: Post a message to a thread.
+- **Purpose**: Fetch a single thread (membership required for the owning group).
+- **Response**: `ThreadResponse`
+
+### 6.4 POST `/threads/{threadId}/messages`
+
+- **Access**: `MENTOR` or `MENTEE`
+- **Purpose**: Post a message or reply to a thread.
 - **Request** `CreateMessageRequest`
 
 | Field | Type | Required | Validation | Notes |
 | --- | --- | --- | --- | --- |
 | `content` | string | ✅ | ≤ 8,000 chars | Message body |
 | `codeLanguage` | string | ❌ | ≤ 30 chars | Optional language tag |
+| `parentMessageId` | UUID | ❌ | Must belong to the same thread | When provided, the new message is a reply |
 
 - **Response**: `201 Created`, returns `MessageResponse`
 
-### 6.4 GET `/threads/{threadId}/messages`
+### 6.5 GET `/threads/{threadId}/messages`
 
 - **Access**: `MENTOR` or `MENTEE`
 - **Purpose**: Paginated messages in chronological order.

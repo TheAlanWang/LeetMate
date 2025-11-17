@@ -13,6 +13,7 @@ public class MessageResponse {
     private final String content;
     private final String codeLanguage;
     private final Instant createdAt;
+    private final UUID parentMessageId;
 
     public MessageResponse(UUID id,
                            UUID threadId,
@@ -21,7 +22,8 @@ public class MessageResponse {
                            String authorRole,
                            String content,
                            String codeLanguage,
-                           Instant createdAt) {
+                           Instant createdAt,
+                           UUID parentMessageId) {
         this.id = id;
         this.threadId = threadId;
         this.authorId = authorId;
@@ -30,6 +32,7 @@ public class MessageResponse {
         this.content = content;
         this.codeLanguage = codeLanguage;
         this.createdAt = createdAt;
+        this.parentMessageId = parentMessageId;
     }
 
     public UUID getId() {
@@ -62,5 +65,9 @@ public class MessageResponse {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getParentMessageId() {
+        return parentMessageId;
     }
 }
