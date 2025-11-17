@@ -416,12 +416,15 @@ const RoleSelection = () => {
   );
 };
 
-const GroupCard = ({ group, onRefresh, onMessage }) => {
+const GroupCard = ({ group, onRefresh, onMessage, joined, onJoined }) => {
   const { token } = useAuth();
   const [joining, setJoining] = useState(false);
   const navigate = useNavigate();
 
   const joinGroup = async () => {
+    if (joined) {
+      return;
+    }
     if (!token) {
       onMessage?.('Please log in first.');
       return;
@@ -439,6 +442,7 @@ const GroupCard = ({ group, onRefresh, onMessage }) => {
         throw new Error(data.message || 'Failed to join group');
       }
       onMessage?.(`Successfully joined "${data.name}" group!`);
+      onJoined?.(group.id);
       onRefresh?.();
       navigate(`/groups/${group.id}`);
     } catch (error) {
@@ -477,10 +481,10 @@ const GroupCard = ({ group, onRefresh, onMessage }) => {
       </div>
       <button
         onClick={joinGroup}
-        disabled={joining}
-        className="w-full px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
+        disabled={joining || joined}
+        className={`w-full px-6 py-2 rounded-lg transition font-medium ${joined ? 'bg-teal-100 text-teal-600 cursor-default' : 'bg-teal-500 text-white hover:bg-teal-600'}`}
       >
-        {joining ? 'Joining...' : 'Join Group'}
+        {joined ? 'Joined' : joining ? 'Joining...' : 'Join Group'}
       </button>
     </div>
   );
@@ -671,10 +675,12 @@ const MentorActions = ({ onSuccess, onMessage }) => {
 };
 
 const LandingPage = () => {
+  const { user, token } = useAuth();
   const [groups, setGroups] = useState([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [groupsError, setGroupsError] = useState(null);
   const [toast, setToast] = useState(null);
+  const [joinedGroupIds, setJoinedGroupIds] = useState(new Set());
 
   const fetchGroups = useCallback(() => {
     setGroupsLoading(true);
@@ -694,6 +700,29 @@ const LandingPage = () => {
   useEffect(() => {
     fetchGroups();
   }, [fetchGroups]);
+
+  useEffect(() => {
+    if (!user || !token) {
+      setJoinedGroupIds(new Set());
+      return;
+    }
+    const fetchJoinedGroups = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/groups/members/${user.id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to load joined groups');
+        }
+        const ids = new Set((data || []).map((g) => g.id));
+        setJoinedGroupIds(ids);
+      } catch (error) {
+        console.warn('Failed to load joined groups', error);
+      }
+    };
+    fetchJoinedGroups();
+  }, [user, token]);
 
   useEffect(() => {
     if (!toast) {
@@ -719,7 +748,7 @@ const LandingPage = () => {
         )}
       </div>
       <RoleSelection />
-      <div className="bg-teal-50 py-12">
+      <div className="bg-gray-50 py-12">
       <div className="max-w-[1400px] mx-auto px-4 pb-12">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-3xl font-bold text-gray-900">
@@ -749,6 +778,8 @@ const LandingPage = () => {
                     group={group}
                     onRefresh={fetchGroups}
                     onMessage={handleMessage}
+                    joined={joinedGroupIds.has(group.id)}
+                    onJoined={(id) => setJoinedGroupIds((prev) => new Set(prev).add(id))}
                   />
                 ))
               )}

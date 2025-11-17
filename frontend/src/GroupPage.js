@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Send, ArrowLeft, MoreVertical } from 'lucide-react';
+import { Send, ArrowLeft, MoreHorizontal } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from './App';
 import TagSelector from './components/TagSelector';
@@ -39,6 +39,11 @@ const GroupPage = () => {
   const [threadForm, setThreadForm] = useState({ title: '', description: '' });
   const [expandedMessages, setExpandedMessages] = useState({});
   const [threadMessageDrafts, setThreadMessageDrafts] = useState({});
+  const [threadComposerOpen, setThreadComposerOpen] = useState({});
+  const [openReplyForms, setOpenReplyForms] = useState({});
+  const [messageMenuOpen, setMessageMenuOpen] = useState({});
+  const [editingMessage, setEditingMessage] = useState({});
+  const [editDrafts, setEditDrafts] = useState({});
   const [showThreadForm, setShowThreadForm] = useState(false);
 
   const demoGroup = {
@@ -134,6 +139,52 @@ const GroupPage = () => {
 
   const renderMarkdown = (content, messageId) => {
     if (!content) return null;
+
+    const highlightCodeBlock = (lang, rawCode) => {
+      const keywords = [
+        'const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'class', 'async', 'await',
+        'try', 'catch', 'finally', 'throw', 'import', 'from', 'export', 'new', 'switch', 'case', 'break', 'continue',
+        'def', 'lambda', 'yield', 'with', 'as', 'elif', 'in', 'not', 'and', 'or', 'public', 'private', 'protected',
+        'static', 'void', 'int', 'float', 'double', 'boolean', 'string'
+      ];
+      const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
+
+      const escapeHtmlToken = (str) =>
+        str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+
+      const tokenizer =
+        /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\b\d+(?:\.\d+)?\b|\b[a-zA-Z_][\w]*\b)/g;
+
+      let result = '';
+      let lastIndex = 0;
+      let match;
+      while ((match = tokenizer.exec(rawCode)) !== null) {
+        const [token] = match;
+        result += escapeHtmlToken(rawCode.slice(lastIndex, match.index));
+
+        const isComment = token.startsWith('//') || token.startsWith('/*') || token.startsWith('#');
+        const isString = token.startsWith('"') || token.startsWith("'") || token.startsWith('`');
+        const isNumber = /^\d/.test(token);
+        const isKeyword = keywordRegex.test(token);
+
+        let color = '#111827';
+        if (isComment) color = '#6b7280';
+        else if (isString) color = '#b45309';
+        else if (isNumber) color = '#16a34a';
+        else if (isKeyword) color = '#2563eb';
+
+        result += `<span style="color:${color}">${escapeHtmlToken(token)}</span>`;
+        lastIndex = match.index + token.length;
+        keywordRegex.lastIndex = 0;
+      }
+      result += escapeHtmlToken(rawCode.slice(lastIndex));
+      return result;
+    };
     const escapeHtml = (str) =>
       str
         .replace(/&/g, '&amp;')
@@ -141,12 +192,34 @@ const GroupPage = () => {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+
+    const codeBlocks = [];
+    // Extract fenced code blocks with optional language before escaping.
+    const withPlaceholders = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, lang, code) => {
+      const idx = codeBlocks.length;
+      const highlightedCode = highlightCodeBlock(lang, (code || '').trimEnd());
+      const languageClass = lang ? ` class="language-${lang.toLowerCase()}"` : '';
+      codeBlocks.push(
+        `<pre style="background-color:#f3f4f6;color:#1f2937;" class="rounded-lg p-4 text-sm overflow-x-auto mb-3"><code${languageClass}>${highlightedCode}</code></pre>`
+      );
+      return `__CODE_BLOCK_${idx}__`;
+    });
+
     const isLong = content.length > 300;
     const expanded = expandedMessages[messageId];
-    const displayText = isLong && !expanded ? `${content.slice(0, 300)}...` : content;
+    const displayText = isLong && !expanded ? `${withPlaceholders.slice(0, 300)}...` : withPlaceholders;
+
     let html = escapeHtml(displayText);
-    html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto mb-3"><code>$1</code></pre>');
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded text-sm">$1</code>');
+    // Line breaks
     html = html.replace(/\n/g, '<br/>');
+    // Restore code blocks
+    codeBlocks.forEach((block, idx) => {
+      const placeholder = escapeHtml(`__CODE_BLOCK_${idx}__`);
+      html = html.replace(placeholder, block);
+    });
+
     return (
       <div className="text-gray-800 leading-relaxed">
         <div dangerouslySetInnerHTML={{ __html: html }} />
@@ -183,6 +256,7 @@ const GroupPage = () => {
         throw new Error(data.message || 'Failed to reply');
       }
       setReplyDrafts((prev) => ({ ...prev, [parentId]: '' }));
+      setOpenReplyForms((prev) => ({ ...prev, [parentId]: false }));
       await fetchThreads(groupId);
     } catch (err) {
       setToast(err.message);
@@ -267,11 +341,11 @@ const GroupPage = () => {
   const postMessage = async (threadId, content, parentId = null) => {
     if (!token) {
       setToast('Please log in first.');
-      return;
+      return false;
     }
     if (!content.trim()) {
       setToast('Please enter content.');
-      return;
+      return false;
     }
     try {
       const response = await fetch(`${API_BASE}/threads/${threadId}/messages`, {
@@ -287,8 +361,10 @@ const GroupPage = () => {
         throw new Error(data.message || 'Failed to post message');
       }
       await fetchThreads(groupId);
+      return true;
     } catch (err) {
       setToast(err.message);
+      return false;
     }
   };
 
@@ -320,6 +396,58 @@ const GroupPage = () => {
       }
       setToast('Thread created');
       setThreadForm({ title: '', description: '' });
+      await fetchThreads(groupId);
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  const handleDeleteMessage = async (threadId, messageId) => {
+    if (!token) {
+      setToast('Please log in first.');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/threads/${threadId}/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        throw new Error('Failed to delete message');
+      }
+      setMessageMenuOpen((prev) => ({ ...prev, [messageId]: false }));
+      await fetchThreads(groupId);
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  const handleSaveEdit = async (threadId, messageId) => {
+    if (!token) {
+      setToast('Please log in first.');
+      return;
+    }
+    const content = editDrafts[messageId] || '';
+    if (!content.trim()) {
+      setToast('Please enter content.');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/threads/${threadId}/messages/${messageId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ content })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update message');
+      }
+      setEditingMessage((prev) => ({ ...prev, [messageId]: false }));
+      setMessageMenuOpen((prev) => ({ ...prev, [messageId]: false }));
+      setEditDrafts((prev) => ({ ...prev, [messageId]: '' }));
       await fetchThreads(groupId);
     } catch (err) {
       setToast(err.message);
@@ -386,7 +514,7 @@ const GroupPage = () => {
                 className="p-2 rounded-full hover:bg-gray-100 text-gray-600"
                 aria-label="Group actions"
               >
-                <MoreVertical size={18} />
+                <MoreHorizontal size={18} />
               </button>
               {ownerMenuOpen && (
                 <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-20">
@@ -555,30 +683,6 @@ const GroupPage = () => {
                     <p className="text-xs text-gray-500">{new Date(thread.createdAt).toLocaleString()}</p>
                   </div>
                 </div>
-                {(joined || isOwner) && (
-                  <div className="mb-3">
-                    <textarea
-                      value={threadMessageDrafts[thread.id] || ''}
-                      onChange={(e) => setThreadMessageDrafts((prev) => ({ ...prev, [thread.id]: e.target.value }))}
-                      placeholder="Post a message to this thread..."
-                      rows={2}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400"
-                    />
-                    <div className="flex justify-end mt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const content = threadMessageDrafts[thread.id] || '';
-                          setThreadMessageDrafts((prev) => ({ ...prev, [thread.id]: '' }));
-                          postMessage(thread.id, content, null);
-                        }}
-                        className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-sm"
-                      >
-                        Post
-                      </button>
-                    </div>
-                  </div>
-                )}
                 {repliesByParent[null]?.length === 0 && (
                   <p className="text-sm text-gray-500">No messages yet.</p>
                 )}
@@ -591,30 +695,129 @@ const GroupPage = () => {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <p className="font-semibold text-gray-900 text-sm">{message.authorName || 'Member'}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-900 text-sm">{message.authorName || 'Member'}</p>
+                            {group?.mentorId === message.authorId && (
+                              <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[11px] font-semibold rounded-full">
+                                Group Owner
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500">{message.authorRole}</p>
                         </div>
-                        <span className="text-xs text-gray-500">{new Date(message.createdAt).toLocaleString()}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">{new Date(message.createdAt).toLocaleString()}</span>
+                          {user && (message.authorId === user.id || isOwner) && (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setMessageMenuOpen((prev) => ({ ...prev, [message.id]: !prev[message.id] }))}
+                                className="p-1 rounded-full hover:bg-gray-100 text-gray-600"
+                                aria-label="Message actions"
+                              >
+                                <MoreHorizontal size={16} />
+                              </button>
+                              {messageMenuOpen[message.id] && (
+                                <div className="absolute right-0 mt-2 w-36 bg-white border border-gray-200 rounded-lg shadow-md z-20">
+                                  {message.authorId === user.id && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditDrafts((prev) => ({ ...prev, [message.id]: message.content }));
+                                        setEditingMessage((prev) => ({ ...prev, [message.id]: true }));
+                                        setMessageMenuOpen((prev) => ({ ...prev, [message.id]: false }));
+                                      }}
+                                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      Edit
+                                    </button>
+                                  )}
+                                  {(message.authorId === user.id || isOwner) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteMessage(thread.id, message.id)}
+                                      className="block w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-rose-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      {renderMarkdown(message.content, message.id)}
-                      {(joined || isOwner) && (
-                        <div className="mt-3">
+                      {editingMessage[message.id] ? (
+                        <div className="space-y-2">
                           <textarea
-                            value={replyDrafts[message.id] || ''}
-                            onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [message.id]: e.target.value }))}
-                            placeholder="Add a reply..."
-                            rows={2}
+                            value={editDrafts[message.id] || ''}
+                            onChange={(e) => setEditDrafts((prev) => ({ ...prev, [message.id]: e.target.value }))}
+                            rows={3}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400"
                           />
-                          <div className="flex justify-end mt-2 gap-2">
+                          <div className="flex justify-end gap-2">
                             <button
                               type="button"
-                              onClick={() => handleReply(message.id, thread.id)}
+                              onClick={() => {
+                                setEditingMessage((prev) => ({ ...prev, [message.id]: false }));
+                                setEditDrafts((prev) => ({ ...prev, [message.id]: '' }));
+                              }}
+                              className="px-3 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 text-sm"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(thread.id, message.id)}
                               className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-sm"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        renderMarkdown(message.content, message.id)
+                      )}
+                      {(joined || isOwner) && (
+                        <div className="mt-3">
+                          {openReplyForms[message.id] ? (
+                            <>
+                              <textarea
+                                value={replyDrafts[message.id] || ''}
+                                onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [message.id]: e.target.value }))}
+                                placeholder="Add a reply..."
+                                rows={2}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400"
+                              />
+                              <div className="flex justify-end mt-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenReplyForms((prev) => ({ ...prev, [message.id]: false }));
+                                    setReplyDrafts((prev) => ({ ...prev, [message.id]: '' }));
+                                  }}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 text-sm"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReply(message.id, thread.id)}
+                                  className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-sm"
+                                >
+                                  Reply
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setOpenReplyForms((prev) => ({ ...prev, [message.id]: true }))}
+                              className="text-teal-600 hover:text-teal-700 text-sm font-medium"
                             >
                               Reply
                             </button>
-                          </div>
+                          )}
                         </div>
                       )}
                       {(repliesByParent[message.id] || []).map((child) => renderMessageTree(child, depth + 1))}
@@ -622,6 +825,55 @@ const GroupPage = () => {
                   );
                   return renderMessageTree(msg, 0);
                 })}
+                {(joined || isOwner) && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    {threadComposerOpen[thread.id] ? (
+                      <>
+                        <textarea
+                          value={threadMessageDrafts[thread.id] || ''}
+                          onChange={(e) => setThreadMessageDrafts((prev) => ({ ...prev, [thread.id]: e.target.value }))}
+                          placeholder="Post a message to this thread..."
+                          rows={3}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-400"
+                        />
+                        <div className="flex justify-end mt-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setThreadMessageDrafts((prev) => ({ ...prev, [thread.id]: '' }));
+                              setThreadComposerOpen((prev) => ({ ...prev, [thread.id]: false }));
+                            }}
+                            className="px-3 py-1 border border-gray-300 text-gray-700 rounded hover:bg-gray-50 text-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const content = threadMessageDrafts[thread.id] || '';
+                              const ok = await postMessage(thread.id, content, null);
+                              if (ok) {
+                                setThreadMessageDrafts((prev) => ({ ...prev, [thread.id]: '' }));
+                                setThreadComposerOpen((prev) => ({ ...prev, [thread.id]: false }));
+                              }
+                            }}
+                            className="px-3 py-1 bg-teal-500 text-white rounded hover:bg-teal-600 text-sm"
+                          >
+                            Post
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setThreadComposerOpen((prev) => ({ ...prev, [thread.id]: true }))}
+                        className="text-teal-600 hover:text-teal-700 font-medium text-sm"
+                      >
+                        Post a message
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

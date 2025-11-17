@@ -3,6 +3,7 @@ package com.leetmate.platform.controller;
 import com.leetmate.platform.dto.chat.CreateMessageRequest;
 import com.leetmate.platform.dto.chat.CreateThreadRequest;
 import com.leetmate.platform.dto.chat.MessageResponse;
+import com.leetmate.platform.dto.chat.UpdateMessageRequest;
 import com.leetmate.platform.dto.chat.ThreadResponse;
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.security.UserPrincipal;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -90,5 +92,14 @@ public class GroupChatController {
                               @PathVariable UUID messageId,
                               @AuthenticationPrincipal UserPrincipal user) {
         groupChatService.deleteMessage(threadId, messageId, user.getId());
+    }
+
+    @PutMapping("/threads/{threadId}/messages/{messageId}")
+    @PreAuthorize("hasAnyRole('MENTOR','MENTEE')")
+    public MessageResponse updateMessage(@PathVariable UUID threadId,
+                                         @PathVariable UUID messageId,
+                                         @AuthenticationPrincipal UserPrincipal user,
+                                         @Valid @RequestBody UpdateMessageRequest request) {
+        return groupChatService.updateMessage(threadId, messageId, user.getId(), request);
     }
 }

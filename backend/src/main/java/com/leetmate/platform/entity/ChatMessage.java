@@ -81,6 +81,10 @@ public class ChatMessage {
         return content;
     }
 
+    public void setContent(String content) {
+        this.content = content;
+    }
+
     public String getCodeLanguage() {
         return codeLanguage;
     }

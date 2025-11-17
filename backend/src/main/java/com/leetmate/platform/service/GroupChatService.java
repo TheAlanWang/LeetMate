@@ -3,6 +3,7 @@ package com.leetmate.platform.service;
 import com.leetmate.platform.dto.chat.CreateMessageRequest;
 import com.leetmate.platform.dto.chat.CreateThreadRequest;
 import com.leetmate.platform.dto.chat.MessageResponse;
+import com.leetmate.platform.dto.chat.UpdateMessageRequest;
 import com.leetmate.platform.dto.chat.ThreadResponse;
 import com.leetmate.platform.dto.common.PageResponse;
 import com.leetmate.platform.entity.ChatMessage;
@@ -155,6 +156,22 @@ public class GroupChatService {
             throw new AccessDeniedException("Only mentors or message authors can delete messages");
         }
         chatMessageRepository.delete(message);
+    }
+
+    @Transactional
+    public MessageResponse updateMessage(UUID threadId, UUID messageId, UUID requesterId, UpdateMessageRequest request) {
+        ChatMessage message = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Message %s not found".formatted(messageId)));
+        if (!message.getThread().getId().equals(threadId)) {
+            throw new AccessDeniedException("Message does not belong to this thread");
+        }
+        ensureGroupAccess(message.getThread().getGroup(), requesterId);
+        if (!message.getAuthor().getId().equals(requesterId)) {
+            throw new AccessDeniedException("Only the author can edit this message");
+        }
+        message.setContent(request.getContent());
+        chatMessageRepository.save(message);
+        return toMessageResponse(message);
     }
 
     @Transactional(readOnly = true)

@@ -9,8 +9,6 @@ const GroupListPage = () => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedSubcategory, setSelectedSubcategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -63,45 +61,18 @@ const GroupListPage = () => {
     fetchJoined();
   }, [user, token]);
 
-  const categories = [
-    { value: 'all', label: 'All Categories' },
-    { value: 'leetcode', label: 'LeetCode' },
-    { value: 'system_design', label: 'System Design' }
-  ];
-
-  const subcategories = {
-    leetcode: [
-      { value: 'all', label: 'All Topics' },
-      { value: 'Array', label: 'Array' },
-      { value: 'Stack/Queue', label: 'Stack/Queue' },
-      { value: 'Tree', label: 'Tree' },
-      { value: 'Backtracking', label: 'Backtracking' },
-      { value: 'Dynamic Programming', label: 'Dynamic Programming' },
-      { value: 'Graph', label: 'Graph' }
-    ],
-    system_design: [],
-    all: []
-  };
-
   // Filter groups based on selected filters
   const filteredGroups = useMemo(() => {
     return (fetchedGroups || []).filter((group) => {
       const tagsLower = (group.tags || []).map((t) => t.toLowerCase());
       const searchLower = searchQuery.toLowerCase();
-      const searchMatch =
+      return (
         group.name.toLowerCase().includes(searchLower) ||
         group.description.toLowerCase().includes(searchLower) ||
-        tagsLower.some((t) => t.includes(searchLower));
-      const categoryMatch =
-        selectedCategory === 'all' ||
-        (group.category || '').toLowerCase() === selectedCategory ||
-        group.tags?.map((t) => t.toLowerCase()).includes(selectedCategory);
-      const subcategoryMatch =
-        selectedSubcategory === 'all' ||
-        group.tags?.map((t) => t.toLowerCase()).includes(selectedSubcategory);
-      return categoryMatch && subcategoryMatch && searchMatch;
+        tagsLower.some((t) => t.includes(searchLower))
+      );
     });
-  }, [fetchedGroups, selectedCategory, selectedSubcategory, searchQuery]);
+  }, [fetchedGroups, searchQuery]);
 
   const handleJoinGroup = async (groupId) => {
     if (!token) {
@@ -151,52 +122,6 @@ const GroupListPage = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-400"
             />
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold text-gray-900">Filter by Category</h3>
-            <button
-              onClick={() => {
-                setSelectedCategory('all');
-                setSelectedSubcategory('all');
-                setSearchQuery('');
-              }}
-              className="text-teal-600 hover:text-teal-700 font-medium text-sm"
-            >
-              Reset
-            </button>
-          </div>
-          <div className="flex items-center gap-4 flex-wrap">
-            <select
-              value={selectedCategory}
-              onChange={(e) => {
-                setSelectedCategory(e.target.value);
-                setSelectedSubcategory('all');
-              }}
-              className="border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-teal-400 text-sm"
-            >
-              {categories.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
-            {selectedCategory === 'leetcode' && (
-              <select
-                value={selectedSubcategory}
-                onChange={(e) => setSelectedSubcategory(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-teal-400 text-sm"
-              >
-                {subcategories.leetcode.map((subcat) => (
-                  <option key={subcat.value} value={subcat.value}>
-                    {subcat.label}
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
         </div>
 
