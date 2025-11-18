@@ -18,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 
 /**
@@ -38,8 +39,8 @@ public class GroupService {
      * @param repository group repository
      */
     public GroupService(StudyGroupRepository repository,
-                        UserRepository userRepository,
-                        GroupMemberRepository groupMemberRepository) {
+        UserRepository userRepository,
+        GroupMemberRepository groupMemberRepository) {
         this.repository = repository;
         this.userRepository = userRepository;
         this.groupMemberRepository = groupMemberRepository;
@@ -47,25 +48,42 @@ public class GroupService {
 
     /**
      * Creates a group from the given request.
+     * FIXED: Mentor is automatically added as the first member.
      *
      * @param request creation payload
      * @return created group
      */
+    @Transactional
     public GroupResponse createGroup(CreateGroupRequest request, UUID mentorId) {
         var mentor = userRepository.findById(mentorId)
-                .orElseThrow(() -> new ResourceNotFoundException("User %s not found".formatted(mentorId)));
+            .orElseThrow(() -> new ResourceNotFoundException("User %s not found".formatted(mentorId)));
+
         StudyGroup group = new StudyGroup(UUID.randomUUID(), mentor,
-                request.getName(),
-                request.getDescription(),
-                request.getTags(),
-                Instant.now());
+            request.getName(),
+            request.getDescription(),
+            request.getTags(),
+            Instant.now());
+
+        // Increment member count to include the mentor
+        group.incrementMembers();
         repository.save(group);
+
+        // Create GroupMember record for the mentor
+        GroupMember mentorMembership = new GroupMember(
+            UUID.randomUUID(),
+            group,
+            mentor,
+            Instant.now()
+        );
+        groupMemberRepository.save(mentorMembership);
+
         return toResponse(group);
     }
 
     /**
      * Updates group details for the owning mentor.
      */
+    @Transactional
     public GroupResponse updateGroup(UUID groupId, UUID mentorId, CreateGroupRequest request) {
         StudyGroup group = find(groupId);
         if (group.getMentor() == null || !group.getMentor().getId().equals(mentorId)) {
@@ -89,13 +107,13 @@ public class GroupService {
         validatePagination(page, size);
         PageRequest pageable = PageRequest.of(page, size);
         Page<GroupResponse> groupPage = repository.findAllByOrderByCreatedAtDesc(pageable)
-                .map(this::toResponse);
+            .map(this::toResponse);
         return new PageResponse<>(
-                groupPage.getContent(),
-                groupPage.getNumber(),
-                groupPage.getSize(),
-                groupPage.getTotalElements(),
-                groupPage.getTotalPages());
+            groupPage.getContent(),
+            groupPage.getNumber(),
+            groupPage.getSize(),
+            groupPage.getTotalElements(),
+            groupPage.getTotalPages());
     }
 
     /**
@@ -114,6 +132,7 @@ public class GroupService {
      * @param groupId identifier
      * @return updated response
      */
+    @Transactional
     public GroupResponse joinGroup(UUID groupId, UUID userId) {
         StudyGroup group = find(groupId);
         User member = findUser(userId);
@@ -133,10 +152,11 @@ public class GroupService {
      * @param groupId identifier
      * @return updated response
      */
+    @Transactional
     public GroupResponse leaveGroup(UUID groupId, UUID userId) {
         StudyGroup group = find(groupId);
         var membership = groupMemberRepository.findByGroupIdAndMemberId(groupId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("You are not a member of this group"));
+            .orElseThrow(() -> new ResourceNotFoundException("You are not a member of this group"));
         groupMemberRepository.delete(membership);
         group.decrementMembers();
         repository.save(group);
@@ -152,9 +172,9 @@ public class GroupService {
     public List<GroupResponse> listGroupsForUser(UUID userId) {
         findUser(userId);
         return groupMemberRepository.findGroupsByMemberId(userId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     /**
@@ -166,16 +186,16 @@ public class GroupService {
         var joined = groupMemberRepository.findGroupsByMemberId(userId);
 
         return java.util.stream.Stream.concat(
-                        owned.stream(),
-                        joined.stream())
-                .collect(java.util.stream.Collectors.toMap(
-                        StudyGroup::getId,
-                        g -> g,
-                        (g1, g2) -> g1))
-                .values()
-                .stream()
-                .map(this::toResponse)
-                .toList();
+                owned.stream(),
+                joined.stream())
+            .collect(java.util.stream.Collectors.toMap(
+                StudyGroup::getId,
+                g -> g,
+                (g1, g2) -> g1))
+            .values()
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     /**
@@ -187,34 +207,34 @@ public class GroupService {
     public List<GroupMemberResponse> listMenteesForGroup(UUID groupId) {
         StudyGroup group = find(groupId);
         return groupMemberRepository.findAllByGroupIdOrderByJoinedAtAsc(group.getId())
-                .stream()
-                .map(membership -> {
-                    User mentee = membership.getMember();
-                    return new GroupMemberResponse(mentee.getId(), mentee.getName(), mentee.getEmail(), membership.getJoinedAt());
-                })
-                .toList();
+            .stream()
+            .map(membership -> {
+                User mentee = membership.getMember();
+                return new GroupMemberResponse(mentee.getId(), mentee.getName(), mentee.getEmail(), membership.getJoinedAt());
+            })
+            .toList();
     }
 
     private StudyGroup find(UUID groupId) {
         return repository.findById(groupId)
-                .orElseThrow(() -> new ResourceNotFoundException("Group %s not found".formatted(groupId)));
+            .orElseThrow(() -> new ResourceNotFoundException("Group %s not found".formatted(groupId)));
     }
 
     private GroupResponse toResponse(StudyGroup group) {
         return new GroupResponse(group.getId(), group.getName(), group.getDescription(),
-                group.getTags(), group.getMemberCount(), group.getCreatedAt(),
-                group.getMentor() != null ? group.getMentor().getId() : null,
-                group.getMentor() != null ? group.getMentor().getName() : null);
+            group.getTags(), group.getMemberCount(), group.getCreatedAt(),
+            group.getMentor() != null ? group.getMentor().getId() : null,
+            group.getMentor() != null ? group.getMentor().getName() : null);
     }
 
     private void validatePagination(int page, int size) {
         Assert.isTrue(page >= 0, "page must be greater or equal to 0");
         Assert.isTrue(size > 0 && size <= MAX_PAGE_SIZE,
-                "size must be between 1 and " + MAX_PAGE_SIZE);
+            "size must be between 1 and " + MAX_PAGE_SIZE);
     }
 
     private User findUser(UUID userId) {
         return userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User %s not found".formatted(userId)));
+            .orElseThrow(() -> new ResourceNotFoundException("User %s not found".formatted(userId)));
     }
 }
