@@ -61,7 +61,7 @@ const GroupListPage = () => {
     fetchJoined();
   }, [user, token]);
 
-  // Filter groups based on selected filters
+  // Filter groups based on search query
   const filteredGroups = useMemo(() => {
     return (fetchedGroups || []).filter((group) => {
       const tagsLower = (group.tags || []).map((t) => t.toLowerCase());
@@ -74,6 +74,7 @@ const GroupListPage = () => {
     });
   }, [fetchedGroups, searchQuery]);
 
+  // Handle joining a group - NOW WITH REAL API CALL
   const handleJoinGroup = async (groupId) => {
     if (!token) {
       setToast('Please log in first.');
@@ -81,10 +82,33 @@ const GroupListPage = () => {
       return;
     }
     
-    setToast('Successfully joined the group!');
-    setTimeout(() => setToast(null), 3000);
-    // 实际应用中可以在这里做 API 调用并跳转
-    setTimeout(() => navigate(`/groups/${groupId}`), 500);
+    try {
+      const response = await fetch(`${API_BASE}/groups/${groupId}/join`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to join group');
+      }
+      
+      // Update local state
+      setToast(`Successfully joined "${data.name}" group!`);
+      setJoinedGroupIds((prev) => new Set(prev).add(groupId));
+      
+      // Update the group in the list with new member count
+      setFetchedGroups((prevGroups) =>
+        prevGroups.map((g) => (g.id === groupId ? data : g))
+      );
+      
+      setTimeout(() => setToast(null), 3000);
+      setTimeout(() => navigate(`/groups/${groupId}`), 500);
+    } catch (error) {
+      setToast(error.message);
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   return (
