@@ -680,6 +680,9 @@ const GroupPage = () => {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <h4 className="text-lg font-semibold text-gray-900">{thread.title}</h4>
+                    {thread.description && (
+                      <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{thread.description}</p>
+                    )}
                     <p className="text-xs text-gray-500">{new Date(thread.createdAt).toLocaleString()}</p>
                   </div>
                 </div>
