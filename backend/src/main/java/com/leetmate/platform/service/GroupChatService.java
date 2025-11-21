@@ -35,17 +35,20 @@ public class GroupChatService {
     private final StudyGroupRepository studyGroupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public GroupChatService(ChatThreadRepository chatThreadRepository,
                             ChatMessageRepository chatMessageRepository,
                             StudyGroupRepository studyGroupRepository,
                             GroupMemberRepository groupMemberRepository,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                            NotificationService notificationService) {
         this.chatThreadRepository = chatThreadRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.studyGroupRepository = studyGroupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -74,6 +77,9 @@ public class GroupChatService {
             );
             chatMessageRepository.save(message);
         }
+
+        // Notify all group members about the new thread
+        notificationService.createNewThreadNotification(groupId, thread.getId(), creatorId);
 
         return toThreadResponse(thread);
     }
@@ -138,6 +144,12 @@ public class GroupChatService {
                 parent
         );
         chatMessageRepository.save(message);
+
+        // If this is a reply, notify the thread creator
+        if (request.getParentMessageId() != null) {
+            notificationService.createThreadReplyNotification(threadId, message.getId(), authorId);
+        }
+
         return toMessageResponse(message);
     }
 
