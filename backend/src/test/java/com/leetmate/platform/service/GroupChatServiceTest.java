@@ -47,6 +47,9 @@ class GroupChatServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private NotificationService notificationService;
+
     private GroupChatService service;
 
     private UUID groupId;
@@ -64,7 +67,8 @@ class GroupChatServiceTest {
                 chatMessageRepository,
                 studyGroupRepository,
                 groupMemberRepository,
-                userRepository);
+                userRepository,
+                notificationService);
 
         groupId = UUID.randomUUID();
         threadId = UUID.randomUUID();
